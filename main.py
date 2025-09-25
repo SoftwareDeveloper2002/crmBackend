@@ -37,8 +37,8 @@ app.add_middleware(
 # =======================
 #   Supabase Setup
 # =======================
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://wwpuorqzzvzuslbpukil.supabase.co")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3cHVvcnF6enZ6dXNsYnB1a2lsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODc1Njk0NiwiZXhwIjoyMDc0MzMyOTQ2fQ.64t6V2e7_Wg085lwHFssNkAJrWNHMFLwSJwQkpmtKq4")
+SUPABASE_URL = "https://wwpuorqzzvzuslbpukil.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3cHVvcnF6enZ6dXNsYnB1a2lsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODc1Njk0NiwiZXhwIjoyMDc0MzMyOTQ2fQ.64t6V2e7_Wg085lwHFssNkAJrWNHMFLwSJwQkpmtKq4"
 #SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3cHVvcnF6enZ6dXNsYnB1a2lsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NTY5NDYsImV4cCI6MjA3NDMzMjk0Nn0.CkZxQnv4TESaKiBWIVclYcXF6fb-FpBK0TswTuLJ7jU")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
