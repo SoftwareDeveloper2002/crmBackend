@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from fastapi.responses import JSONResponse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
@@ -22,8 +23,8 @@ SMTP_PASS = "srsk ests yvzu kklg"  # Use an App Password if using Gmail
 # =======================
 app = FastAPI(title="Freelancer CRM API")
 origins = [
-    "https://r-techon.vercel.app",
     "http://localhost:4200",
+    "https://r-techon.vercel.app",
     "http://127.0.0.1:4200"
 ]
 # CORS for frontend integration
@@ -206,44 +207,94 @@ class InvoiceModel(BaseModel):
 # =======================
 #   Auth Endpoints
 # =======================
+
+
 @app.post("/register")
 def register(user: RegisterModel):
-    # Validate password confirmation
+    # 1️⃣ Password confirmation
+    print("data:", user.dict())
     if user.password != user.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match")
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Passwords do not match"}
+        )
 
     try:
-        # 1️⃣ Sign up with Supabase Auth
+        # 2️⃣ Check if email or username already exists
+        existing = supabase.table("users").select("*").or_(
+            f"email.eq.{user.email},username.eq.{user.username}"
+        ).execute()
+
+        if existing.data:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Email or username already exists"}
+            )
+
+        # 3️⃣ Create user in Supabase Auth
         res = supabase.auth.sign_up({"email": user.email, "password": user.password})
         if not res.user:
-            raise HTTPException(status_code=400, detail="Could not create user in Supabase Auth")
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Could not create user in Supabase Auth"}
+            )
 
-        # 2️⃣ Insert into Postgres users table
-        username_to_use = user.username or user.email.split("@")[0] # fallback username
+        # 4️⃣ Insert into Postgres users table
         insert_res = supabase.table("users").insert({
             "user_id": res.user.id,
-            "email": res.user.email,
-            "username": username_to_use  # now NOT NULL
+            "email": user.email,
+            "username": user.username
         }).execute()
 
-        if insert_res.error:
-            # Rollback Supabase auth user if Postgres insert fails
+        if not insert_res.data:
+            # Rollback auth user if insert fails
             supabase.auth.admin.delete_user(res.user.id)
-            raise HTTPException(status_code=400, detail=f"Failed to insert into users table: {insert_res.error.message}")
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Failed to insert user into database"}
+            )
 
-        return {"message": "User registered successfully", "user_id": res.user.id}
+        # ✅ Success
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": "User registered successfully",
+                "user_id": res.user.id
+            }
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": str(e)}
+        )
 
 @app.post("/login")
 def login(user: LoginModel):
     try:
-        res = supabase.auth.sign_in_with_password({"email": user.email, "password": user.password})
-        return {"message": "Login successful", "session": res.session}
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        res = supabase.auth.sign_in_with_password({
+            "email": user.email,
+            "password": user.password
+        })
 
+        # If no session returned, check verification
+        if not res or not getattr(res, "session", None):
+            # Check if user exists
+            user_info = supabase.auth.admin.get_user_by_email(user.email)
+            if user_info.user and not user_info.user.email_confirmed_at:
+                raise HTTPException(status_code=401, detail="Account not verified")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        return {
+            "success": True,
+            "message": "Login successful",
+            "session": res.session
+        }
+
+    except Exception as e:
+        # Log e if needed
+        raise HTTPException(status_code=401, detail="Invalid credentials or server error")
 
 # =======================
 #   Clients Endpoints
