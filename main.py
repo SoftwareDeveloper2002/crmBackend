@@ -26,8 +26,8 @@ SMTP_PASS = "srsk ests yvzu kklg"  # Use an App Password if using Gmail
 # =======================
 app = FastAPI(title="Freelancer CRM API")
 origins = [
-    "http://localhost:4200",
     "https://r-techon.vercel.app",
+    "http://localhost:4200",
     "http://127.0.0.1:4200"
 ]
 # CORS for frontend integration
