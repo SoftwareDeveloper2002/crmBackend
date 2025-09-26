@@ -84,7 +84,7 @@ def send_invoice_email(invoice: dict, recipient: str):
 
         <!-- Body -->
         <div style="padding:24px; color:#111827; font-size:16px; line-height:1.5;">
-            <p style="margin-bottom:16px;">Hello,</p>
+            <p style="margin-bottom:16px;">Hello!</p>
             <p style="margin-bottom:16px;">Please find your invoice details below:</p>
 
             <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
@@ -114,7 +114,6 @@ def send_invoice_email(invoice: dict, recipient: str):
             <div style="background:#f9fafb; padding:16px; border-radius:8px; margin-bottom:24px; border:1px solid #e5e7eb;">
                 <h3 style="margin:0 0 12px 0; font-size:18px; font-weight:bold; color:#4f46e5;">Bank & E-Wallet Details</h3>
                 <p style="margin:4px 0;"><b>UnionBank:</b> 1096 6083 8564<br>Account Name: Robby Roda</p>
-                <p style="margin:4px 0;"><b>GCash:</b> 09217017064<br>Account Name: Robby Roda</p>
                 <p style="margin:4px 0;"><b>GoTyme:</b> 0105589471951<br>Account Name: Robby Roda</p>
             </div>
 
