@@ -8,6 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from datetime import datetime
 import smtplib
 import os
 
@@ -413,7 +414,16 @@ def delete_task(task_id: str, user=Depends(get_current_user)):
 @app.get("/invoices/{project_id}")
 def list_invoices(project_id: str, user=Depends(get_current_user)):
     response = supabase.table("invoices").select("*").eq("project_id", project_id).execute()
-    return response.data
+    invoices = response.data
+
+    # Compute overdue status
+    for inv in invoices:
+        if inv["status"] == "unpaid" and inv.get("due_date"):
+            due = datetime.fromisoformat(inv["due_date"])
+            if due < datetime.now():
+                inv["status"] = "overdue"
+
+    return invoices
 
 # --------------------------
 # Invoices: public search + protected CRUD
