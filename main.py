@@ -193,6 +193,16 @@ class InvoiceModel(BaseModel):
 # =======================
 #   Auth Endpoints
 # =======================
+# =======================
+# Health Check Endpoint
+# =======================
+@app.get("/health")
+def health_check():
+    """
+    Simple health check endpoint for monitoring.
+    Returns a 200 OK with a JSON response.
+    """
+    return {"status": "ok", "message": "Freelancer CRM API is running"}
 
 @app.get("/test-smtp")
 def test_smtp():
