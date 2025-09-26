@@ -119,7 +119,7 @@ def send_invoice_email(invoice: dict, recipient: str):
             </div>
 
             <p style="margin-bottom:16px;">📩 After payment, please send your receipt to:</p>
-            <p style="font-weight:bold; color:#4f46e5; margin-bottom:24px;">robbyroda09@gmail.com</p>
+            <p style="font-weight:bold; color:#4f46e5; margin-bottom:24px;">admin@iskolardev.online</p>
 
             <p style="margin-bottom:24px;">If you have any questions regarding this invoice, feel free to contact us.</p>
         </div>
