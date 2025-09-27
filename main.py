@@ -19,7 +19,7 @@ SMTP_SERVER = "smtp.gmail.com"   # e.g., Gmail SMTP
 SMTP_PORT = 587
 SMTP_USER = "robbyroda09@gmail.com"
 SMTP_PASS = "srsk ests yvzu kklg"  # Use an App Password if using Gmail
-
+TEMPLATE_DIR = "templates"
 
 # =======================
 #   FastAPI App Setup
@@ -63,96 +63,53 @@ def get_current_user(authorization: Optional[str] = Header(None)):
         return user
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+def render_template(template_name: str, context: dict) -> str:
+    template_path = os.path.join(TEMPLATE_DIR, template_name)
     
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=400, detail=f"Template '{template_name}' not found")
+    
+    with open(template_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    # Replace placeholders
+    for key, value in context.items():
+        html = html.replace(f"{{{{{key}}}}}", str(value))
+    
+    return html
 
-
-def send_invoice_email(invoice: dict, recipient: str):
-    """Send invoice email via SendGrid API"""
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8" />
-        <title>Invoice #{invoice['invoice_id']}</title>
-    </head>
-    <body style="margin:0; padding:0; background-color:#f9fafb; font-family:Arial, sans-serif;">
-        <div style="max-width:600px; margin:20px auto; background:#ffffff; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.1); overflow:hidden;">
-        
-        <!-- Header -->
-        <div style="background:#4f46e5; color:#ffffff; padding:20px; text-align:center;">
-            <h1 style="margin:0; font-size:24px; font-weight:bold;">Invoice #{invoice['invoice_id']}</h1>
-        </div>
-
-        <!-- Body -->
-        <div style="padding:24px; color:#111827; font-size:16px; line-height:1.5;">
-            <p style="margin-bottom:16px;">Hello!</p>
-            <p style="margin-bottom:16px;">Please find your invoice details below:</p>
-
-            <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
-            <tr>
-                <td style="padding:12px; border:1px solid #e5e7eb; background:#f9fafb;"><b>Invoice ID</b></td>
-                <td style="padding:12px; border:1px solid #e5e7eb;">{invoice['invoice_id']}</td>
-            </tr>
-            <tr>
-                <td style="padding:12px; border:1px solid #e5e7eb; background:#f9fafb;"><b>Amount</b></td>
-                <td style="padding:12px; border:1px solid #e5e7eb;">₱{invoice['amount']:,}</td>
-            </tr>
-            <tr>
-                <td style="padding:12px; border:1px solid #e5e7eb; background:#f9fafb;"><b>Status</b></td>
-                <td style="padding:12px; border:1px solid #e5e7eb; color:{'green' if invoice['status']=='paid' else 'red'};">
-                {invoice['status'].capitalize()}
-                </td>
-            </tr>
-            <tr>
-                <td style="padding:12px; border:1px solid #e5e7eb; background:#f9fafb;"><b>Due Date</b></td>
-                <td style="padding:12px; border:1px solid #e5e7eb;">{invoice.get('due_date','N/A')}</td>
-            </tr>
-            </table>
-
-            <p style="margin-bottom:24px;">To settle this invoice, you may use the following payment options:</p>
-
-            <!-- Payment Options -->
-            <div style="background:#f9fafb; padding:16px; border-radius:8px; margin-bottom:24px; border:1px solid #e5e7eb;">
-                <h3 style="margin:0 0 12px 0; font-size:18px; font-weight:bold; color:#4f46e5;">Bank & E-Wallet Details</h3>
-                <p style="margin:4px 0;"><b>UnionBank:</b> 1096 6083 8564<br>Account Name: Robby Roda</p>
-                <p style="margin:4px 0;"><b>GoTyme:</b> 0105589471951<br>Account Name: Robby Roda</p>
-            </div>
-
-            <p style="margin-bottom:16px;">📩 After payment, please send your receipt to:</p>
-            <p style="font-weight:bold; color:#4f46e5; margin-bottom:24px;">admin@iskolardev.online</p>
-
-            <p style="margin-bottom:24px;">If you have any questions regarding this invoice, feel free to contact us.</p>
-        </div>
-
-        <!-- Footer -->
-        <div style="background:#f3f4f6; padding:16px; text-align:center; font-size:14px; color:#6b7280;">
-            <p style="margin:0;">Thank you for your business! 🚀</p>
-        </div>
-        </div>
-    </body>
-    </html>
+def send_invoice_email(invoice: dict, recipient: str, template_name: str):
     """
-
+    Send an invoice email via SendGrid.
+    Runs safely in background tasks without crashing FastAPI.
+    """
     try:
+        html_content = render_template(template_name, {
+            "invoice_id": invoice['invoice_id'],
+            "amount": f"{invoice['amount']:,}",
+            "status": invoice['status'].capitalize(),
+            "due_date": invoice.get('due_date', 'N/A'),
+        })
+
         message = Mail(
-            from_email="admin@iskolardev.online",  # must be verified in SendGrid
+            from_email="admin@iskolardev.online",
             to_emails=recipient,
             subject=f"Invoice #{invoice['invoice_id']}",
             html_content=html_content
         )
-        sg = SendGridAPIClient(SEND_GRID_API)  # <-- use the hardcoded variable here
+        sg = SendGridAPIClient(SEND_GRID_API)
         response = sg.send(message)
-        print(f"SendGrid response: {response.status_code}")
+        print(f"[SUCCESS] Email sent to {recipient}, status code: {response.status_code}")
     except Exception as e:
-        print("SendGrid email failed:", e)
-        raise HTTPException(status_code=500, detail="Error sending invoice email via SendGrid")
+        print(f"[ERROR] Failed to send invoice email to {recipient}: {e}")
 
 # =======================
 #   Pydantic Models
 # =======================
 class InvoiceEmailRequest(BaseModel):
-    invoice_id: str
     recipient: EmailStr
+    template: Optional[str] = "invoice_basic.html"
 
 class RegisterModel(BaseModel):
     username: str
@@ -492,15 +449,32 @@ def delete_invoice(invoice_id: str, user=Depends(get_current_user)):
 #   New Endpoint
 # =======================
 @app.post("/invoices/{invoice_id}/send-email")
-def send_invoice(invoice_id: str, request: InvoiceEmailRequest, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    # Fetch invoice
+def send_invoice(
+    invoice_id: str,
+    request: InvoiceEmailRequest,
+    background_tasks: BackgroundTasks,
+    user=Depends(get_current_user)
+):
+    """
+    Send an invoice email in the background using the selected template.
+    Expects JSON body:
+    {
+        "recipient": "client@example.com",
+        "template": "invoice_basic.html"  # optional
+    }
+    """
+
+    # Fetch the invoice from Supabase
     response = supabase.table("invoices").select("*").eq("invoice_id", invoice_id).execute()
-    if not response.data:
+    if not response.data or len(response.data) == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     invoice = response.data[0]
 
-    # Send email in background
-    background_tasks.add_task(send_invoice_email, invoice, request.recipient)
+    # Use default template if none specified
+    template_file = request.template if request.template else "invoice_basic.html"
 
-    return {"message": f"Invoice {invoice_id} is being sent to {request.recipient}"}
+    # Add background task to send the email
+    background_tasks.add_task(send_invoice_email, invoice, request.recipient, template_file)
+
+    return {"message": f"Invoice {invoice_id} is being sent to {request.recipient} using template {template_file}"}

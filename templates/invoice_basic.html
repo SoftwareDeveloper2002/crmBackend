@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Invoice #{{invoice_id}}</title>
+</head>
+<body style="margin:0; padding:0; font-family:Arial, sans-serif; background:#f9fafb;">
+    <div style="max-width:600px; margin:20px auto; background:#fff; padding:20px; border-radius:8px; border:1px solid #e5e7eb;">
+        <h2 style="color:#4f46e5; text-align:center;">Invoice #{{invoice_id}}</h2>
+        <p>Hello!</p>
+        <p>Invoice details:</p>
+        <ul>
+            <li><b>Amount:</b> ₱{{amount}}</li>
+            <li><b>Status:</b> {{status}}</li>
+            <li><b>Due Datasde:</b> {{due_date}}</li>
+        </ul>
+        <p>Send payment receipt to <b style="color:#4f46e5;">admin@iskolardev.online</b></p>
+        <p>Thank you!</p>
+    </div>
+</body>
+</html>
