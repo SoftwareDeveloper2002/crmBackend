@@ -8,6 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from typing import List
 from datetime import datetime
 import smtplib
 import os
@@ -79,17 +80,27 @@ def render_template(template_name: str, context: dict) -> str:
     
     return html
 
-def send_invoice_email(invoice: dict, recipient: str, template_name: str):
+def send_invoice_email(invoice: dict, recipient: str, template_name: str, user_id: str):
     """
-    Send an invoice email via SendGrid.
-    Runs safely in background tasks without crashing FastAPI.
+    Send an invoice email via SendGrid, dynamically including payment methods.
     """
     try:
+        # Fetch user payment methods
+        pm_response = supabase.table("payment_methods").select("*").eq("user_id", user_id).execute()
+        payments = pm_response.data or []
+
+        # Build HTML snippet for payment methods
+        payments_html = ""
+        for pm in payments:
+            payments_html += f"<p>{pm['payment_type']}: {pm['account_name']} - {pm['account_number']}</p>"
+
+        # Render template with dynamic placeholders
         html_content = render_template(template_name, {
             "invoice_id": invoice['invoice_id'],
             "amount": f"{invoice['amount']:,}",
             "status": invoice['status'].capitalize(),
             "due_date": invoice.get('due_date', 'N/A'),
+            "payment_methods": payments_html
         })
 
         message = Mail(
@@ -104,9 +115,18 @@ def send_invoice_email(invoice: dict, recipient: str, template_name: str):
     except Exception as e:
         print(f"[ERROR] Failed to send invoice email to {recipient}: {e}")
 
+
 # =======================
 #   Pydantic Models
 # =======================
+
+class PaymentMethodModel(BaseModel):
+    paymentType: str
+    accountNumber: str
+    accountName: str
+
+class PaymentMethodsRequest(BaseModel):
+    payments: List[PaymentMethodModel]
 class InvoiceEmailRequest(BaseModel):
     recipient: EmailStr
     template: Optional[str] = "invoice_basic.html"
@@ -475,6 +495,52 @@ def send_invoice(
     template_file = request.template if request.template else "invoice_basic.html"
 
     # Add background task to send the email
-    background_tasks.add_task(send_invoice_email, invoice, request.recipient, template_file)
+    background_tasks.add_task(send_invoice_email, invoice, request.recipient, template_file, user.user.id)
 
     return {"message": f"Invoice {invoice_id} is being sent to {request.recipient} using template {template_file}"}
+
+
+@app.post("/payment-methods")
+def save_payment_methods(
+    request: PaymentMethodsRequest,
+    user=Depends(get_current_user)
+):
+    """
+    Save multiple payment methods for the authenticated user.
+    This will delete old methods and insert the new ones.
+    """
+    try:
+        # Remove old payment methods for this user
+        supabase.table("payment_methods").delete().eq("user_id", user.user.id).execute()
+
+        # Insert new payment methods
+        data_to_insert = [
+            {
+                "user_id": user.user.id,
+                "payment_type": pm.paymentType,
+                "account_number": pm.accountNumber,
+                "account_name": pm.accountName
+            }
+            for pm in request.payments
+        ]
+
+        response = supabase.table("payment_methods").insert(data_to_insert).execute()
+
+        if response.data:
+            return {"success": True, "message": "Payment methods saved", "data": response.data}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to save payment methods")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/payment-methods")
+def get_payment_methods(user=Depends(get_current_user)):
+    """
+    Retrieve all payment methods for the authenticated user.
+    """
+    try:
+        response = supabase.table("payment_methods").select("*").eq("user_id", user.user.id).execute()
+        return {"success": True, "payments": response.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
