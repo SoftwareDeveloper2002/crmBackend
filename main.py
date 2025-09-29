@@ -166,6 +166,8 @@ class InvoiceModel(BaseModel):
     due_date: Optional[str] = None
     status: Optional[str] = None
 
+class ChangeEmailModel(BaseModel):
+    new_email: EmailStr
 
 # =======================
 #   Auth Endpoints
@@ -544,3 +546,49 @@ def get_payment_methods(user=Depends(get_current_user)):
         return {"success": True, "payments": response.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/user/email")
+def update_email(data: ChangeEmailModel, user=Depends(get_current_user)):
+    try:
+        # 🚫 Prevent change for a specific email
+        if user.user.email == "rtechondemo@gmail.com":
+            raise HTTPException(status_code=403, detail="This email cannot be changed")
+
+        # 1️⃣ Check duplicate email
+        existing = supabase.table("users").select("*").eq("email", data.new_email).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Email already in use")
+
+        # 2️⃣ Use admin client for email update
+        supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        res = supabase_admin.auth.admin.update_user_by_id(
+            user.user.id,
+            {"email": data.new_email}
+        )
+
+        if not res.user:
+            raise HTTPException(status_code=400, detail="Failed to update email in Auth")
+
+        # 3️⃣ Update Postgres users table
+        update_res = supabase.table("users").update({"email": data.new_email}).eq("user_id", user.user.id).execute()
+        if not update_res.data:
+            raise HTTPException(status_code=400, detail="Failed to update email in database")
+
+        return {"success": True, "message": "Email updated successfully", "new_email": data.new_email}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to update email: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/user/me")
+def get_current_user_info(user=Depends(get_current_user)):
+    """
+    Returns the authenticated user's info.
+    """
+    return {
+        "user_id": user.user.id,
+        "email": user.user.email,
+        "username": getattr(user.user, "user_metadata", {}).get("username", "")
+    }
