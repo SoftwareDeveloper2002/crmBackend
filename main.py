@@ -13,6 +13,8 @@ from datetime import datetime
 import smtplib
 import os
 
+from sms import router as sms_router
+
 # =======================
 #   Email Config
 # =======================
@@ -31,15 +33,15 @@ origins = [
     "http://localhost:4200",
     "http://127.0.0.1:4200"
 ]
-# CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # change to frontend domain later
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(sms_router)
 # =======================
 #   Supabase Setup
 # =======================
@@ -119,6 +121,9 @@ def send_invoice_email(invoice: dict, recipient: str, template_name: str, user_i
 # =======================
 #   Pydantic Models
 # =======================
+class SmsRequest(BaseModel):
+    number: str
+    message: str
 
 class PaymentMethodModel(BaseModel):
     paymentType: str
