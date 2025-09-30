@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from supabase import create_client, Client
 from typing import Optional, List
+import logging
 
+logging.basicConfig(level=logging.INFO)
 # -----------------
 # Supabase setup
 # -----------------
@@ -45,6 +47,7 @@ def update_credits(user_id: str, new_credits: int) -> None:
 # -----------------
 @router.post("/send")
 def send_sms(req: SmsRequest):
+    logging.info(f"Received SMS request: {req.dict()}")
     """
     Queue an SMS for delivery by the Android device.
     Deducts 1 credit per SMS.
