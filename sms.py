@@ -3,8 +3,11 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 from typing import Optional, List
 import logging
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
 
 logging.basicConfig(level=logging.INFO)
+
 # -----------------
 # Supabase setup
 # -----------------
@@ -15,6 +18,18 @@ SUPABASE_SERVICE_ROLE_KEY = (
     "64t6V2e7_Wg085lwHFssNkAJrWNHMFLwSJwQkpmtKq4"
 )
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+# -----------------
+# FastAPI app & CORS
+# -----------------
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"],  # Angular dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 router = APIRouter(prefix="/sms", tags=["SMS"])
 
@@ -34,13 +49,20 @@ class QueueUpdate(BaseModel):
 # DB Helpers
 # -----------------
 def get_user_by_api_key(api_key: str) -> Optional[dict]:
-    response = supabase.table("users").select("*").eq("api_key", api_key).execute()
-    if response.data:
-        return response.data[0]
+    try:
+        response = supabase.table("users").select("*").eq("api_key", api_key).execute()
+        if response.data:
+            return response.data[0]
+    except Exception as e:
+        logging.error(f"Supabase get_user_by_api_key error: {str(e)}")
     return None
 
 def update_credits(user_id: str, new_credits: int) -> None:
-    supabase.table("users").update({"credits": new_credits}).eq("user_id", user_id).execute()
+    try:
+        supabase.table("users").update({"credits": new_credits}).eq("user_id", user_id).execute()
+    except Exception as e:
+        logging.error(f"Supabase update_credits error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update user credits")
 
 # -----------------
 # Endpoints
@@ -48,10 +70,7 @@ def update_credits(user_id: str, new_credits: int) -> None:
 @router.post("/send")
 def send_sms(req: SmsRequest):
     logging.info(f"Received SMS request: {req.dict()}")
-    """
-    Queue an SMS for delivery by the Android device.
-    Deducts 1 credit per SMS.
-    """
+
     user = get_user_by_api_key(req.api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -73,8 +92,8 @@ def send_sms(req: SmsRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Supabase insert failed: {str(e)}")
 
-    if response.error:
-        raise HTTPException(status_code=500, detail=f"Supabase error: {response.error}")
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Failed to insert SMS into queue")
 
     return {
         "status": "queued",
@@ -84,9 +103,6 @@ def send_sms(req: SmsRequest):
 
 @router.post("/credits/add")
 def add_credits(api_key: str, amount: int):
-    """
-    Add credits to a user account.
-    """
     user = get_user_by_api_key(api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -101,32 +117,34 @@ def add_credits(api_key: str, amount: int):
 
 @router.get("/queue/{user_id}")
 def get_sms_queue(user_id: str, limit: int = 50):
-    """
-    Fetch queued SMS messages for the Android device.
-    Optional `limit` parameter to fetch only a subset.
-    """
-    response = supabase.table("sms_queue")\
-        .select("*")\
-        .eq("user_id", user_id)\
-        .eq("status", "queued")\
-        .limit(limit)\
-        .execute()
-    
-    if response.error:
+    try:
+        response = supabase.table("sms_queue")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .eq("status", "queued")\
+            .limit(limit)\
+            .execute()
+    except Exception as e:
+        logging.error(f"Supabase fetch queue error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch SMS queue")
 
     return response.data or []
 
 @router.post("/queue/update_status")
 def update_sms_status(update: QueueUpdate):
-    """
-    Update the status of an SMS in the queue.
-    """
-    response = supabase.table("sms_queue").update({"status": update.status})\
-        .eq("id", update.sms_id)\
-        .execute()
-
-    if response.error:
+    try:
+        response = supabase.table("sms_queue").update({"status": update.status})\
+            .eq("id", update.sms_id)\
+            .execute()
+    except Exception as e:
+        logging.error(f"Supabase update status error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update SMS status")
 
+    if not response.data:
+        raise HTTPException(status_code=500, detail="No SMS updated")
+
     return {"status": "updated", "sms_id": update.sms_id, "new_status": update.status}
+
+# -----------------
+# Mount router
+# -----------------
