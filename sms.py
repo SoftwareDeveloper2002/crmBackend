@@ -60,20 +60,23 @@ def send_sms(req: SmsRequest):
     # Deduct 1 credit
     update_credits(user["user_id"], credits - 1)
 
-    # Insert SMS into queue
-    response = supabase.table("sms_queue").insert({
-        "user_id": user["user_id"],
-        "number": req.number,
-        "message": req.message,
-        "status": "queued"
-    }).execute()
+    try:
+        response = supabase.table("sms_queue").insert({
+            "user_id": user["user_id"],
+            "number": req.number,
+            "message": req.message,
+            "status": "queued"
+        }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase insert failed: {str(e)}")
 
     if response.error:
-        raise HTTPException(status_code=500, detail="Failed to queue SMS")
+        raise HTTPException(status_code=500, detail=f"Supabase error: {response.error}")
 
     return {
         "status": "queued",
-        "remaining_credits": credits - 1
+        "remaining_credits": credits - 1,
+        "insert_response": response.data
     }
 
 @router.post("/credits/add")
