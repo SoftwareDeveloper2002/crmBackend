@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, FastAPI
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, FastAPI, Request
+from pydantic import BaseModel, Field
 from supabase import create_client, Client
 from typing import Optional
 import logging
@@ -21,7 +21,7 @@ SUPABASE_SERVICE_ROLE_KEY = (
 )
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-SECRET_KEY = "supersecret"  # change this later
+SECRET_KEY = "supersecret"  # change this in production
 ALGORITHM = "HS256"
 
 # -----------------
@@ -51,8 +51,8 @@ class QueueUpdate(BaseModel):
     status: str  # queued, sent, failed
 
 class DeviceLoginRequest(BaseModel):
-    device_id: str
-    token: str   # replaced api_key with token
+    device_id: str = Field(..., example="uuid-of-device")
+    token: str = Field(..., example="jwt-token-from-qr")
 
 # -----------------
 # DB Helpers
@@ -74,7 +74,7 @@ def update_credits(user_id: str, new_credits: int) -> None:
         raise HTTPException(status_code=500, detail="Failed to update user credits")
 
 # -----------------
-# New: Generate QR payload
+# QR Payload Generation
 # -----------------
 @router.get("/generate_qr")
 def generate_qr(api_key: str):
@@ -93,6 +93,7 @@ def generate_qr(api_key: str):
         algorithm=ALGORITHM,
     )
 
+    logging.info(f"Generated QR payload for user {user['user_id']}: device_id={device_id}")
     return {"device_id": device_id, "token": token}
 
 # -----------------
@@ -125,27 +126,35 @@ def send_sms(req: SmsRequest):
     if not response.data:
         raise HTTPException(status_code=500, detail="Failed to insert SMS into queue")
 
+    logging.info(f"Queued SMS for user {user['user_id']}: {req.number}")
     return {"status": "queued", "remaining_credits": credits - 1, "insert_response": response.data}
 
 # -----------------
 # Device Register via QR
 # -----------------
 @router.post("/add_device")
-def add_device(req: DeviceLoginRequest):
-    """
-    Register device using QR token and update user's device_id
-    """
+async def add_device(req: DeviceLoginRequest, request: Request):
+    logging.info(f"Received /add_device request: {await request.body()}")
+    logging.info(f"Parsed payload: {req.dict()}")
+
+    # Decode JWT token
     try:
         decoded = jwt.decode(req.token, SECRET_KEY, algorithms=[ALGORITHM])
+        logging.info(f"Decoded JWT: {decoded}")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="QR token expired")
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        logging.error(f"JWT decode error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid QR token")
 
-    if decoded["device_id"] != req.device_id:
+    # Verify device_id matches
+    if decoded.get("device_id") != req.device_id:
+        logging.warning(f"Device ID mismatch: token={decoded.get('device_id')} request={req.device_id}")
         raise HTTPException(status_code=400, detail="Device ID mismatch")
 
-    user_id = decoded["user_id"]
+    user_id = decoded.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload: missing user_id")
 
     # Upsert device into devices table
     try:
@@ -164,7 +173,12 @@ def add_device(req: DeviceLoginRequest):
         logging.error(f"Supabase update users device_id error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update user's device_id")
 
-    return {"status": "success", "message": "Device registered", "user_id": user_id, "device_id": req.device_id}
+    return {
+        "status": "success",
+        "message": "Device registered",
+        "user_id": user_id,
+        "device_id": req.device_id
+    }
 
 # -----------------
 # Device fetch queued SMS
