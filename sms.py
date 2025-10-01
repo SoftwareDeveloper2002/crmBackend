@@ -133,7 +133,7 @@ def send_sms(req: SmsRequest):
 @router.post("/add_device")
 def add_device(req: DeviceLoginRequest):
     """
-    Register device using QR token
+    Register device using QR token and update user's device_id
     """
     try:
         decoded = jwt.decode(req.token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -147,19 +147,24 @@ def add_device(req: DeviceLoginRequest):
 
     user_id = decoded["user_id"]
 
+    # Upsert device into devices table
     try:
-        response = supabase.table("devices").upsert({
+        supabase.table("devices").upsert({
             "user_id": user_id,
             "device_id": req.device_id
         }, on_conflict="device_id").execute()
     except Exception as e:
         logging.error(f"Supabase add_device error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to register device")
+        raise HTTPException(status_code=500, detail="Failed to register device in devices table")
 
-    if not response.data:
-        raise HTTPException(status_code=500, detail="Device registration failed")
+    # Update device_id in users table
+    try:
+        supabase.table("users").update({"device_id": req.device_id}).eq("user_id", user_id).execute()
+    except Exception as e:
+        logging.error(f"Supabase update users device_id error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update user's device_id")
 
-    return {"status": "success", "message": "Device registered", "user_id": user_id}
+    return {"status": "success", "message": "Device registered", "user_id": user_id, "device_id": req.device_id}
 
 # -----------------
 # Device fetch queued SMS
