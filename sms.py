@@ -220,3 +220,21 @@ def fetch_sms_queue(device_id: str, limit: int = 50):
         }
         for sms in sms_resp.data or []
     ]
+
+# -----------------
+# Device update SMS status
+# -----------------
+@router.post("/queue/update_status")
+def update_sms_status(update: QueueUpdate):
+    """
+    Update the status of a queued SMS (sent, failed).
+    """
+    try:
+        response = supabase.table("sms_queue").update({"status": update.status}).eq("id", update.sms_id).execute()
+        if response.data is None:
+            raise HTTPException(status_code=404, detail="SMS not found")
+        logging.info(f"Updated SMS {update.sms_id} status to {update.status}")
+        return {"status": "success", "sms_id": update.sms_id, "new_status": update.status}
+    except Exception as e:
+        logging.error(f"Failed to update SMS status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update SMS status")
