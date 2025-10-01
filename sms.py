@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, FastAPI
 from pydantic import BaseModel
 from supabase import create_client, Client
-from typing import Optional, List
+from typing import Optional
 import logging
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
+import uuid
+import jwt
+import time
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,6 +20,9 @@ SUPABASE_SERVICE_ROLE_KEY = (
     "64t6V2e7_Wg085lwHFssNkAJrWNHMFLwSJwQkpmtKq4"
 )
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+SECRET_KEY = "supersecret"  # change this later
+ALGORITHM = "HS256"
 
 # -----------------
 # FastAPI app & CORS
@@ -45,6 +50,10 @@ class QueueUpdate(BaseModel):
     sms_id: int
     status: str  # queued, sent, failed
 
+class DeviceLoginRequest(BaseModel):
+    device_id: str
+    token: str   # replaced api_key with token
+
 # -----------------
 # DB Helpers
 # -----------------
@@ -65,7 +74,29 @@ def update_credits(user_id: str, new_credits: int) -> None:
         raise HTTPException(status_code=500, detail="Failed to update user credits")
 
 # -----------------
-# Endpoints
+# New: Generate QR payload
+# -----------------
+@router.get("/generate_qr")
+def generate_qr(api_key: str):
+    """
+    Generate a device_id + signed token for QR code
+    Frontend will turn this into a QR image.
+    """
+    user = get_user_by_api_key(api_key)
+    if not user:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    device_id = str(uuid.uuid4())
+    token = jwt.encode(
+        {"user_id": user["user_id"], "device_id": device_id, "exp": time.time() + 600},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    return {"device_id": device_id, "token": token}
+
+# -----------------
+# SMS Endpoints
 # -----------------
 @router.post("/send")
 def send_sms(req: SmsRequest):
@@ -79,7 +110,6 @@ def send_sms(req: SmsRequest):
     if credits <= 0:
         raise HTTPException(status_code=402, detail="Insufficient credits")
 
-    # Deduct 1 credit
     update_credits(user["user_id"], credits - 1)
 
     try:
@@ -95,30 +125,54 @@ def send_sms(req: SmsRequest):
     if not response.data:
         raise HTTPException(status_code=500, detail="Failed to insert SMS into queue")
 
-    return {
-        "status": "queued",
-        "remaining_credits": credits - 1,
-        "insert_response": response.data
-    }
+    return {"status": "queued", "remaining_credits": credits - 1, "insert_response": response.data}
 
-@router.post("/credits/add")
-def add_credits(api_key: str, amount: int):
-    user = get_user_by_api_key(api_key)
-    if not user:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-
-    new_credits = user.get("credits", 0) + amount
-    update_credits(user["user_id"], new_credits)
-
-    return {
-        "status": "success",
-        "new_credits": new_credits
-    }
-
-@router.get("/queue/{user_id}")
-def get_sms_queue(user_id: str, limit: int = 50):
+# -----------------
+# Device Register via QR
+# -----------------
+@router.post("/add_device")
+def add_device(req: DeviceLoginRequest):
+    """
+    Register device using QR token
+    """
     try:
-        response = supabase.table("sms_queue")\
+        decoded = jwt.decode(req.token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="QR token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid QR token")
+
+    if decoded["device_id"] != req.device_id:
+        raise HTTPException(status_code=400, detail="Device ID mismatch")
+
+    user_id = decoded["user_id"]
+
+    try:
+        response = supabase.table("devices").upsert({
+            "user_id": user_id,
+            "device_id": req.device_id
+        }, on_conflict="device_id").execute()
+    except Exception as e:
+        logging.error(f"Supabase add_device error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to register device")
+
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Device registration failed")
+
+    return {"status": "success", "message": "Device registered", "user_id": user_id}
+
+# -----------------
+# Device fetch queued SMS
+# -----------------
+@router.get("/queue/fetch/{device_id}")
+def fetch_sms_queue(device_id: str, limit: int = 50):
+    try:
+        device_resp = supabase.table("devices").select("user_id").eq("device_id", device_id).execute()
+        if not device_resp.data:
+            raise HTTPException(status_code=404, detail="Device not registered")
+        user_id = device_resp.data[0]["user_id"]
+
+        sms_resp = supabase.table("sms_queue")\
             .select("*")\
             .eq("user_id", user_id)\
             .eq("status", "queued")\
@@ -128,23 +182,12 @@ def get_sms_queue(user_id: str, limit: int = 50):
         logging.error(f"Supabase fetch queue error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch SMS queue")
 
-    return response.data or []
-
-@router.post("/queue/update_status")
-def update_sms_status(update: QueueUpdate):
-    try:
-        response = supabase.table("sms_queue").update({"status": update.status})\
-            .eq("id", update.sms_id)\
-            .execute()
-    except Exception as e:
-        logging.error(f"Supabase update status error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update SMS status")
-
-    if not response.data:
-        raise HTTPException(status_code=500, detail="No SMS updated")
-
-    return {"status": "updated", "sms_id": update.sms_id, "new_status": update.status}
-
-# -----------------
-# Mount router
-# -----------------
+    return [
+        {
+            "sms_id": sms.get("id"),
+            "number": sms.get("number"),
+            "message": sms.get("message"),
+            "status": sms.get("status")
+        }
+        for sms in sms_resp.data or []
+    ]

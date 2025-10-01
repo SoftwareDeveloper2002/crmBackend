@@ -12,7 +12,7 @@ from typing import List
 from datetime import datetime
 import smtplib
 import os
-
+import uuid, secrets
 from sms import router as sms_router
 
 # =======================
@@ -200,92 +200,103 @@ def test_smtp():
 
 
 @app.post("/register")
-def register(user: RegisterModel):
-    # 1️⃣ Password confirmation
-    print("data:", user.dict())
-    if user.password != user.confirm_password:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "message": "Passwords do not match"}
-        )
-
+async def register(user: RegisterModel):
     try:
-        # 2️⃣ Check if email or username already exists
-        existing = supabase.table("users").select("*").or_(
-            f"email.eq.{user.email},username.eq.{user.username}"
-        ).execute()
+        # 1️⃣ Register user in Supabase Auth
+        res = supabase.auth.sign_up({
+            "email": user.email,
+            "password": user.password
+        })
 
-        if existing.data:
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "message": "Email or username already exists"}
-            )
-
-        # 3️⃣ Create user in Supabase Auth
-        res = supabase.auth.sign_up({"email": user.email, "password": user.password})
         if not res.user:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": "Could not create user in Supabase Auth"}
+                content={"success": False, "message": "Registration failed"}
             )
 
-        # 4️⃣ Insert into Postgres users table
+        # 2️⃣ Generate API key & device ID
+        api_key = secrets.token_hex(16)   # Secure random API key
+        device_id = str(uuid.uuid4())     # Unique device ID
+
+        # 3️⃣ Insert into Postgres users table
         insert_res = supabase.table("users").insert({
             "user_id": res.user.id,
             "email": user.email,
-            "username": user.username
+            "username": user.username,
+            "api_key": api_key,
+            "device_id": device_id,
+            "credits": 0,
+            "role": "freelancer",
+            "created_at": datetime.utcnow().isoformat()
         }).execute()
 
-        if not insert_res.data:
-            # Rollback auth user if insert fails
-            supabase.auth.admin.delete_user(res.user.id)
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "message": "Failed to insert user into database"}
-            )
-
-        # ✅ Success
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "message": "User registered successfully",
-                "user_id": res.user.id
+                "user_id": res.user.id,
+                "api_key": api_key,
+                "device_id": device_id
             }
         )
 
     except Exception as e:
         return JSONResponse(
-            status_code=400,
+            status_code=500,
             content={"success": False, "message": str(e)}
         )
-
+    
 @app.post("/login")
-def login(user: LoginModel):
+async def login(user: LoginModel):
     try:
+        # 1️⃣ Authenticate with Supabase Auth
         res = supabase.auth.sign_in_with_password({
             "email": user.email,
             "password": user.password
         })
 
-        # If no session returned, check verification
-        if not res or not getattr(res, "session", None):
-            # Check if user exists
-            user_info = supabase.auth.admin.get_user_by_email(user.email)
-            if user_info.user and not user_info.user.email_confirmed_at:
-                raise HTTPException(status_code=401, detail="Account not verified")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not res.session:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Invalid credentials"}
+            )
 
-        return {
-            "success": True,
-            "message": "Login successful",
-            "session": res.session
-        }
+        token = res.session.access_token
+        user_id = res.user.id
+
+        # 2️⃣ Fetch user record from "users" table
+        user_data = (
+            supabase.table("users")
+            .select("user_id, email, username, api_key, device_id, role, credits, created_at")
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+
+        if not user_data.data:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": "User profile not found"}
+            )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": "Login successful",
+                "session": {
+                    "access_token": token,
+                    "user": user_data.data
+                }
+            }
+        )
 
     except Exception as e:
-        # Log e if needed
-        raise HTTPException(status_code=401, detail="Invalid credentials or server error")
-
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": str(e)})
+    
 # =======================
 #   Clients Endpoints
 # =======================
@@ -590,10 +601,25 @@ def update_email(data: ChangeEmailModel, user=Depends(get_current_user)):
 @app.get("/user/me")
 def get_current_user_info(user=Depends(get_current_user)):
     """
-    Returns the authenticated user's info.
+    Returns the authenticated user's info, merged from Supabase Auth and DB.
     """
-    return {
-        "user_id": user.user.id,
-        "email": user.user.email,
-        "username": getattr(user.user, "user_metadata", {}).get("username", "")
-    }
+    try:
+        # Get base auth user
+        auth_user = {
+            "user_id": user.user.id,
+            "email": user.user.email,
+            "username": getattr(user.user, "user_metadata", {}).get("username", "")
+        }
+
+        # Fetch extra fields from your users table
+        db_user = supabase.table("users").select("*").eq("user_id", user.user.id).single().execute()
+
+        if db_user.data:
+            auth_user.update({
+                "api_key": db_user.data.get("api_key"),
+                "deviceId": db_user.data.get("device_id")
+            })
+
+        return auth_user
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
