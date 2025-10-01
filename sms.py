@@ -132,9 +132,13 @@ def send_sms(req: SmsRequest):
 # -----------------
 # Device Register via QR
 # -----------------
+# -----------------
+# Device Register via QR (auto-extract device_id if missing)
+# -----------------
 @router.post("/add_device")
 async def add_device(req: DeviceLoginRequest, request: Request):
-    logging.info(f"Received /add_device request: {await request.body()}")
+    body_bytes = await request.body()
+    logging.info(f"Received /add_device request: {body_bytes}")
     logging.info(f"Parsed payload: {req.dict()}")
 
     # Decode JWT token
@@ -147,8 +151,14 @@ async def add_device(req: DeviceLoginRequest, request: Request):
         logging.error(f"JWT decode error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid QR token")
 
-    # Verify device_id matches
-    if decoded.get("device_id") != req.device_id:
+    # Use device_id from token if request.device_id is empty
+    device_id = req.device_id or decoded.get("device_id")
+
+    if not device_id:
+        raise HTTPException(status_code=400, detail="Missing device_id")
+
+    # Verify device_id matches the token
+    if decoded.get("device_id") != device_id:
         logging.warning(f"Device ID mismatch: token={decoded.get('device_id')} request={req.device_id}")
         raise HTTPException(status_code=400, detail="Device ID mismatch")
 
@@ -160,7 +170,7 @@ async def add_device(req: DeviceLoginRequest, request: Request):
     try:
         supabase.table("devices").upsert({
             "user_id": user_id,
-            "device_id": req.device_id
+            "device_id": device_id
         }, on_conflict="device_id").execute()
     except Exception as e:
         logging.error(f"Supabase add_device error: {str(e)}")
@@ -168,7 +178,7 @@ async def add_device(req: DeviceLoginRequest, request: Request):
 
     # Update device_id in users table
     try:
-        supabase.table("users").update({"device_id": req.device_id}).eq("user_id", user_id).execute()
+        supabase.table("users").update({"device_id": device_id}).eq("user_id", user_id).execute()
     except Exception as e:
         logging.error(f"Supabase update users device_id error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update user's device_id")
@@ -177,7 +187,7 @@ async def add_device(req: DeviceLoginRequest, request: Request):
         "status": "success",
         "message": "Device registered",
         "user_id": user_id,
-        "device_id": req.device_id
+        "device_id": device_id
     }
 
 # -----------------
