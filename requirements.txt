@@ -4,3 +4,4 @@ pydantic[email]
 supabase
 python-dotenv
 sendgrid
+firebase-admin
