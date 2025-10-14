@@ -13,7 +13,7 @@ from datetime import datetime
 import smtplib
 import os
 import uuid, secrets
-from sms import router as sms_router
+from sms import sms_router
 
 # =======================
 #   Email Config
@@ -27,7 +27,7 @@ TEMPLATE_DIR = "templates"
 # =======================
 #   FastAPI App Setup
 # =======================
-app = FastAPI(title="Freelancer CRM API")
+app = FastAPI(title="SMS Gateway Documentation", version="1.2.7")
 origins = [
     "https://r-techon.vercel.app",
     "http://localhost:4200",
@@ -180,7 +180,7 @@ class ChangeEmailModel(BaseModel):
 # =======================
 # Health Check Endpoint
 # =======================
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 def health_check():
     """
     Simple health check endpoint for monitoring.
@@ -188,7 +188,7 @@ def health_check():
     """
     return {"status": "ok", "message": "Freelancer CRM API is running"}
 
-@app.get("/test-smtp")
+@app.get("/test-smtp", include_in_schema=False)
 def test_smtp():
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
@@ -199,7 +199,7 @@ def test_smtp():
         return {"success": False, "error": str(e)}
 
 
-@app.post("/register")
+@app.post("/register", include_in_schema=False)
 async def register(user: RegisterModel):
     try:
         # 1️⃣ Register user in Supabase Auth
@@ -247,7 +247,7 @@ async def register(user: RegisterModel):
             content={"success": False, "message": str(e)}
         )
     
-@app.post("/login")
+@app.post("/login", include_in_schema=False)
 async def login(user: LoginModel):
     try:
         # 1️⃣ Authenticate with Supabase Auth
@@ -300,12 +300,12 @@ async def login(user: LoginModel):
 # =======================
 #   Clients Endpoints
 # =======================
-@app.get("/clients")
+@app.get("/clients", include_in_schema=False)
 def list_clients(user=Depends(get_current_user)):
     response = supabase.table("clients").select("*").eq("user_id", user.user.id).execute()
     return response.data
 
-@app.post("/clients")
+@app.post("/clients", include_in_schema=False)
 def add_client(client: ClientModel, user=Depends(get_current_user)):
     """
     Add a new client for the currently authenticated user.
@@ -324,7 +324,7 @@ def add_client(client: ClientModel, user=Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/clients/{client_id}")
+@app.put("/clients/{client_id}" , include_in_schema=False)
 def update_client(client_id: str, client: ClientModel, user=Depends(get_current_user)):
     updates = client.dict(exclude_unset=True)
     response = supabase.table("clients").update(updates).eq("client_id", client_id).eq("user_id", user.user.id).execute()
@@ -332,7 +332,7 @@ def update_client(client_id: str, client: ClientModel, user=Depends(get_current_
         return {"message": "Client updated", "client": response.data[0]}
     raise HTTPException(status_code=404, detail="Client not found")
 
-@app.delete("/clients/{client_id}")
+@app.delete("/clients/{client_id}", include_in_schema=False)
 def delete_client(client_id: str, user=Depends(get_current_user)):
     response = supabase.table("clients").delete().eq("client_id", client_id).eq("user_id", user.user.id).execute()
     if response.data:
@@ -343,12 +343,12 @@ def delete_client(client_id: str, user=Depends(get_current_user)):
 # =======================
 #   Projects Endpoints
 # =======================
-@app.get("/projects")
+@app.get("/projects", include_in_schema=False)
 def list_projects(user=Depends(get_current_user)):
     response = supabase.table("projects").select("*").eq("user_id", user.user.id).execute()
     return response.data
 
-@app.post("/projects")
+@app.post("/projects", include_in_schema=False)
 def add_project(project: ProjectModel, user=Depends(get_current_user)):
     response = supabase.table("projects").insert({
         **project.dict(),
@@ -358,7 +358,7 @@ def add_project(project: ProjectModel, user=Depends(get_current_user)):
         return {"message": "Project created", "project": response.data[0]}
     raise HTTPException(status_code=400, detail="Error creating project")
 
-@app.put("/projects/{project_id}")
+@app.put("/projects/{project_id}", include_in_schema=False)
 def update_project(project_id: str, project: ProjectModel, user=Depends(get_current_user)):
     updates = project.dict(exclude_unset=True)
     response = supabase.table("projects").update(updates).eq("project_id", project_id).eq("user_id", user.user.id).execute()
@@ -366,7 +366,7 @@ def update_project(project_id: str, project: ProjectModel, user=Depends(get_curr
         return {"message": "Project updated", "project": response.data[0]}
     raise HTTPException(status_code=404, detail="Project not found")
 
-@app.delete("/projects/{project_id}")
+@app.delete("/projects/{project_id}", include_in_schema=False)
 def delete_project(project_id: str, user=Depends(get_current_user)):
     response = supabase.table("projects").delete().eq("project_id", project_id).eq("user_id", user.user.id).execute()
     if response.data:
@@ -374,7 +374,7 @@ def delete_project(project_id: str, user=Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Project not found")
 
 
-@app.get("/projects/{project_id}")
+@app.get("/projects/{project_id}", include_in_schema=False)
 def get_project(project_id: str, user=Depends(get_current_user)):
     response = supabase.table("projects").select("*").eq("project_id", project_id).execute()
     if response.data:
@@ -385,19 +385,19 @@ def get_project(project_id: str, user=Depends(get_current_user)):
 # =======================
 #   Tasks Endpoints
 # =======================
-@app.get("/tasks/{project_id}")
+@app.get("/tasks/{project_id}", include_in_schema=False)
 def list_tasks(project_id: str, user=Depends(get_current_user)):
     response = supabase.table("tasks").select("*").eq("project_id", project_id).execute()
     return response.data
 
-@app.post("/tasks")
+@app.post("/tasks", include_in_schema=False)
 def add_task(task: TaskModel, user=Depends(get_current_user)):
     response = supabase.table("tasks").insert(task.dict()).execute()
     if response.data:
         return {"message": "Task created", "task": response.data[0]}
     raise HTTPException(status_code=400, detail="Error creating task")
 
-@app.put("/tasks/{task_id}")
+@app.put("/tasks/{task_id}", include_in_schema=False)
 def update_task(task_id: str, task: TaskModel, user=Depends(get_current_user)):
     updates = task.dict(exclude_unset=True)
     response = supabase.table("tasks").update(updates).eq("task_id", task_id).execute()
@@ -405,7 +405,7 @@ def update_task(task_id: str, task: TaskModel, user=Depends(get_current_user)):
         return {"message": "Task updated", "task": response.data[0]}
     raise HTTPException(status_code=404, detail="Task not found")
 
-@app.delete("/tasks/{task_id}")
+@app.delete("/tasks/{task_id}", include_in_schema=False)
 def delete_task(task_id: str, user=Depends(get_current_user)):
     response = supabase.table("tasks").delete().eq("task_id", task_id).execute()
     if response.data:
@@ -416,7 +416,7 @@ def delete_task(task_id: str, user=Depends(get_current_user)):
 # =======================
 #   Invoices Endpoints
 # =======================
-@app.get("/invoices/{project_id}")
+@app.get("/invoices/{project_id}", include_in_schema=False)
 def list_invoices(project_id: str, user=Depends(get_current_user)):
     response = supabase.table("invoices").select("*").eq("project_id", project_id).execute()
     invoices = response.data
@@ -435,7 +435,7 @@ def list_invoices(project_id: str, user=Depends(get_current_user)):
 # --------------------------
 
 # public invoice search - must be declared BEFORE the dynamic project route
-@app.get("/invoice/search")
+@app.get("/invoice/search", include_in_schema=False)
 def search_invoice_by_id(invoice_id: Optional[str] = None):
     """
     Public: return a single invoice by invoice_id.
@@ -457,14 +457,14 @@ def search_invoice_by_id(invoice_id: Optional[str] = None):
     return resp.data[0]   # return a single invoice object
 
 
-@app.post("/invoices")
+@app.post("/invoices", include_in_schema=False)
 def add_invoice(invoice: InvoiceModel, user=Depends(get_current_user)):
     response = supabase.table("invoices").insert(invoice.dict()).execute()
     if response.data:
         return {"message": "Invoice created", "invoice": response.data[0]}
     raise HTTPException(status_code=400, detail="Error creating invoice")
 
-@app.put("/invoices/{invoice_id}")
+@app.put("/invoices/{invoice_id}", include_in_schema=False)
 def update_invoice(invoice_id: str, invoice: InvoiceModel, user=Depends(get_current_user)):
     updates = invoice.dict(exclude_none=True)
     
@@ -475,7 +475,7 @@ def update_invoice(invoice_id: str, invoice: InvoiceModel, user=Depends(get_curr
         return {"message": "Invoice updated successfully", "invoice": response.data[0]}
     raise HTTPException(status_code=404, detail="Invoice not found")
 
-@app.delete("/invoices/{invoice_id}")
+@app.delete("/invoices/{invoice_id}", include_in_schema=False)
 def delete_invoice(invoice_id: str, user=Depends(get_current_user)):
     response = supabase.table("invoices").delete().eq("invoice_id", invoice_id).execute()
     if response.data:
@@ -486,7 +486,7 @@ def delete_invoice(invoice_id: str, user=Depends(get_current_user)):
 # =======================
 #   New Endpoint
 # =======================
-@app.post("/invoices/{invoice_id}/send-email")
+@app.post("/invoices/{invoice_id}/send-email", include_in_schema=False)
 def send_invoice(
     invoice_id: str,
     request: InvoiceEmailRequest,
@@ -518,7 +518,7 @@ def send_invoice(
     return {"message": f"Invoice {invoice_id} is being sent to {request.recipient} using template {template_file}"}
 
 
-@app.post("/payment-methods")
+@app.post("/payment-methods", include_in_schema=False)
 def save_payment_methods(
     request: PaymentMethodsRequest,
     user=Depends(get_current_user)
@@ -552,7 +552,7 @@ def save_payment_methods(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/payment-methods")
+@app.get("/payment-methods", include_in_schema=False)
 def get_payment_methods(user=Depends(get_current_user)):
     """
     Retrieve all payment methods for the authenticated user.
@@ -563,7 +563,7 @@ def get_payment_methods(user=Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/user/email")
+@app.put("/user/email", include_in_schema=False)
 def update_email(data: ChangeEmailModel, user=Depends(get_current_user)):
     try:
         # 🚫 Prevent change for a specific email
@@ -598,7 +598,7 @@ def update_email(data: ChangeEmailModel, user=Depends(get_current_user)):
         print(f"[ERROR] Failed to update email: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/user/me")
+@app.get("/user/me", include_in_schema=False)
 def get_current_user_info(user=Depends(get_current_user)):
     """
     Returns the authenticated user's info, merged from Supabase Auth and DB.
