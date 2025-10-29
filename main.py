@@ -598,7 +598,7 @@ def update_email(data: ChangeEmailModel, user=Depends(get_current_user)):
         print(f"[ERROR] Failed to update email: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/user/me", include_in_schema=False)
+@app.get("/user/me")
 def get_current_user_info(user=Depends(get_current_user)):
     """
     Returns the authenticated user's info, merged from Supabase Auth and DB.
@@ -621,5 +621,15 @@ def get_current_user_info(user=Depends(get_current_user)):
             })
 
         return auth_user
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user/credits")
+def get_user_credits(user=Depends(get_current_user)):
+    try:
+        user_record = supabase.table("users").select("credits").eq("user_id", user.user.id).single().execute()
+        if not user_record.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"credits": user_record.data.get("credits", 0)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
