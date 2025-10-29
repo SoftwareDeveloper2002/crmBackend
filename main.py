@@ -54,18 +54,26 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 # =======================
 #   Auth Helpers
 # =======================
-def get_current_user(authorization: Optional[str] = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = authorization.replace("Bearer ", "")
-    try:
+def get_current_user(authorization: Optional[str] = Header(None), api_key: Optional[str] = Query(None)):
+    if authorization:
+        token = authorization.replace("Bearer ", "")
         user = supabase.auth.get_user(token)
         if not user or not user.user:
             raise HTTPException(status_code=401, detail="Unauthorized")
         return user
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    elif api_key:
+        res = supabase.table("users").select("*").eq("api_key", api_key).single().execute()
+        if not res.data:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        class DummyUser:
+            def __init__(self, user_data):
+                self.user = type("User", (), {})()
+                self.user.id = user_data["user_id"]
+                self.user.email = user_data["email"]
+        return DummyUser(res.data)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 def render_template(template_name: str, context: dict) -> str:
     template_path = os.path.join(TEMPLATE_DIR, template_name)
