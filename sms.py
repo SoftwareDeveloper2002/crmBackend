@@ -46,6 +46,7 @@ class SmsRequest(BaseModel):
 def get_user_by_api_key(api_key: str):
     try:
         resp = supabase.table("users").select("*").eq("api_key", api_key).execute()
+        logging.info(f"Supabase response for API key {api_key}: {resp.data}")
         if resp.data:
             return resp.data[0]
     except Exception as e:
@@ -53,7 +54,7 @@ def get_user_by_api_key(api_key: str):
     return None
 
 # -----------------
-# Endpoint: Send SMS
+# Endpoint: Send SMS (queue-only)
 # -----------------
 @sms_router.post("/send")
 def send_sms(req: SmsRequest):
@@ -62,23 +63,20 @@ def send_sms(req: SmsRequest):
     # Validate user via API key
     user = get_user_by_api_key(req.api_key)
     if not user:
+        logging.warning(f"Invalid API key: {req.api_key}")
         raise HTTPException(status_code=403, detail="Invalid API key")
 
-    # Check credits
+    # Check user credits
     credits = user.get("credits", 0)
     if credits <= 0:
+        logging.warning(f"User {user['user_id']} has insufficient credits")
         raise HTTPException(status_code=402, detail="Insufficient credits")
 
-    # Ensure user has a device
-    device_id = user.get("device_id")
-    if not device_id:
-        raise HTTPException(status_code=400, detail="No device registered")
-
-    # Timestamp in milliseconds for Firebase
+    # Timestamp in milliseconds
     timestamp_ms = int(time.time() * 1000)
 
     # -----------------
-    # Queue SMS in Supabase (optional, can be skipped if using Firebase only)
+    # Queue SMS in Supabase
     # -----------------
     try:
         response = supabase.table("sms_queue").insert({
@@ -86,18 +84,18 @@ def send_sms(req: SmsRequest):
             "number": req.number,
             "message": req.message,
             "status": "queued",
-            "created_at": timestamp_ms  # store as integer for consistency
+            "created_at": timestamp_ms
         }).execute()
         if not response.data:
-            logging.warning("Failed to insert SMS into Supabase queue")
+            logging.warning(f"Failed to insert SMS into Supabase queue for user {user['user_id']}")
     except Exception as e:
         logging.error(f"Supabase insert failed: {e}")
 
     # -----------------
-    # Push SMS to Firebase
+    # Push SMS to Firebase queue (no device needed)
     # -----------------
     try:
-        ref = db.reference(f"devices/{device_id}/queue")
+        ref = db.reference(f"queue/{user['user_id']}")
         new_sms_ref = ref.push({
             "api_key": req.api_key,
             "number": req.number,
@@ -105,7 +103,7 @@ def send_sms(req: SmsRequest):
             "status": "queued",
             "timestamp": timestamp_ms
         })
-        logging.info(f"Pushed SMS to Firebase with key: {new_sms_ref.key}")
+        logging.info(f"Pushed SMS to Firebase queue with key: {new_sms_ref.key}")
     except Exception as e:
         logging.error(f"Failed to push SMS to Firebase: {e}")
         raise HTTPException(status_code=500, detail="Failed to queue SMS in Firebase")
@@ -115,6 +113,7 @@ def send_sms(req: SmsRequest):
     # -----------------
     try:
         supabase.table("users").update({"credits": credits - 1}).eq("user_id", user["user_id"]).execute()
+        logging.info(f"Deducted 1 credit from user {user['user_id']}, remaining: {credits-1}")
     except Exception as e:
         logging.error(f"Failed to deduct credits: {e}")
 
