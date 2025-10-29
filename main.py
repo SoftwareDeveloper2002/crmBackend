@@ -31,8 +31,7 @@ app = FastAPI(title="SMS Gateway Documentation", version="1.2.7")
 origins = [
     "https://r-techon.vercel.app",
     "http://localhost:4200",
-    "http://127.0.0.1:4200",
-    "*"
+    "http://127.0.0.1:4200"
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -55,26 +54,18 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 # =======================
 #   Auth Helpers
 # =======================
-def get_current_user(authorization: Optional[str] = Header(None), api_key: Optional[str] = Query(None)):
-    if authorization:
-        token = authorization.replace("Bearer ", "")
+def get_current_user(authorization: Optional[str] = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = authorization.replace("Bearer ", "")
+    try:
         user = supabase.auth.get_user(token)
         if not user or not user.user:
             raise HTTPException(status_code=401, detail="Unauthorized")
         return user
-    elif api_key:
-        res = supabase.table("users").select("*").eq("api_key", api_key).single().execute()
-        if not res.data:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        class DummyUser:
-            def __init__(self, user_data):
-                self.user = type("User", (), {})()
-                self.user.id = user_data["user_id"]
-                self.user.email = user_data["email"]
-        return DummyUser(res.data)
-    else:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 def render_template(template_name: str, context: dict) -> str:
     template_path = os.path.join(TEMPLATE_DIR, template_name)
@@ -632,6 +623,7 @@ def get_current_user_info(user=Depends(get_current_user)):
         return auth_user
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/user/credits")
 def get_user_credits(user=Depends(get_current_user)):
