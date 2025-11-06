@@ -1,17 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
-from typing import Optional
 from datetime import datetime
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import smtplib
-import os, uuid, secrets
+import os
+import uuid
+import secrets
 
 # Import routers
 from sms import sms_router
 from payment import payment_router
+from forget import forget_router
 
 # Import shared Supabase + Auth helpers
 from core import supabase, get_current_user
@@ -29,12 +31,12 @@ SEND_GRID_API = "SG.7TdSg0zFTWqab_lTMuGa6g.2SLBIvRAEkSlB0IfKoVXAhiSarPeZpltwzcKs
 # =======================
 #   FastAPI App Setup
 # =======================
-app = FastAPI(title="SMS Gateway Documentation", version="1.2.7")
+app = FastAPI(title="R-Techon CRM API", version="1.3.0")
 
 origins = [
     "https://r-techon.vercel.app",
     "http://localhost:4200",
-    "http://127.0.0.1:4200"
+    "http://127.0.0.1:4200",
 ]
 
 app.add_middleware(
@@ -48,11 +50,13 @@ app.add_middleware(
 # Register routers
 app.include_router(sms_router)
 app.include_router(payment_router)
+app.include_router(forget_router)
 
 # =======================
 #   Email Helper
 # =======================
 def render_template(template_name: str, context: dict) -> str:
+    """Render an HTML email template with placeholder replacements."""
     template_path = os.path.join(TEMPLATE_DIR, template_name)
 
     if not os.path.exists(template_path):
@@ -68,38 +72,37 @@ def render_template(template_name: str, context: dict) -> str:
 
 
 def send_invoice_email(invoice: dict, recipient: str, template_name: str, user_id: str):
-    """
-    Send invoice email via SendGrid, including user payment methods.
-    """
+    """Send invoice email via SendGrid, including user payment methods."""
     try:
         pm_response = supabase.table("payment_methods").select("*").eq("user_id", user_id).execute()
         payments = pm_response.data or []
 
-        payments_html = ""
-        for pm in payments:
-            payments_html += f"<p>{pm['payment_type']}: {pm['account_name']} - {pm['account_number']}</p>"
+        payments_html = "".join(
+            f"<p>{pm['payment_type']}: {pm['account_name']} - {pm['account_number']}</p>"
+            for pm in payments
+        )
 
         html_content = render_template(template_name, {
             "invoice_id": invoice['invoice_id'],
             "amount": f"{invoice['amount']:,}",
             "status": invoice['status'].capitalize(),
             "due_date": invoice.get('due_date', 'N/A'),
-            "payment_methods": payments_html
+            "payment_methods": payments_html,
         })
 
         message = Mail(
             from_email="admin@iskolardev.online",
             to_emails=recipient,
             subject=f"Invoice #{invoice['invoice_id']}",
-            html_content=html_content
+            html_content=html_content,
         )
 
         sg = SendGridAPIClient(SEND_GRID_API)
         response = sg.send(message)
-        print(f"[SUCCESS] Email sent to {recipient} - Status: {response.status_code}")
+        print(f"✅ [SendGrid] Email sent to {recipient} - Status: {response.status_code}")
 
     except Exception as e:
-        print(f"[ERROR] Failed to send invoice email to {recipient}: {e}")
+        print(f"❌ [Error] Failed to send invoice email to {recipient}: {e}")
 
 
 # =======================
@@ -111,6 +114,7 @@ class RegisterModel(BaseModel):
     password: str
     confirm_password: str
 
+
 class LoginModel(BaseModel):
     email: EmailStr
     password: str
@@ -121,11 +125,13 @@ class LoginModel(BaseModel):
 # =======================
 @app.get("/health", include_in_schema=False)
 def health_check():
-    return {"status": "ok", "message": "Freelancer CRM API is running"}
+    """Check API health status."""
+    return {"status": "ok", "message": "R-Techon CRM API is running"}
 
 
 @app.get("/test-smtp", include_in_schema=False)
 def test_smtp():
+    """Test SMTP connection using Gmail App Password."""
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
             server.starttls()
@@ -140,6 +146,7 @@ def test_smtp():
 # =======================
 @app.post("/register", include_in_schema=False)
 async def register(user: RegisterModel):
+    """Register a new user in Supabase Auth and local users table."""
     try:
         res = supabase.auth.sign_up({"email": user.email, "password": user.password})
 
@@ -157,7 +164,7 @@ async def register(user: RegisterModel):
             "device_id": device_id,
             "credits": 0,
             "role": "freelancer",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat(),
         }).execute()
 
         return JSONResponse(
@@ -167,15 +174,16 @@ async def register(user: RegisterModel):
                 "message": "User registered successfully",
                 "user_id": res.user.id,
                 "api_key": api_key,
-                "device_id": device_id
-            }
+                "device_id": device_id,
+            },
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 
-@app.post("/login", include_in_schema=False)
+@app.post("/login")
 async def login(user: LoginModel):
+    """Authenticate a user and return Supabase session."""
     try:
         res = supabase.auth.sign_in_with_password({"email": user.email, "password": user.password})
 
@@ -201,8 +209,8 @@ async def login(user: LoginModel):
             content={
                 "success": True,
                 "message": "Login successful",
-                "session": {"access_token": token, "user": user_data.data}
-            }
+                "session": {"access_token": token, "user": user_data.data},
+            },
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
@@ -210,11 +218,12 @@ async def login(user: LoginModel):
 
 @app.get("/user/me")
 def get_current_user_info(user=Depends(get_current_user)):
+    """Retrieve the current authenticated user info."""
     try:
         auth_user = {
             "user_id": user.user.id,
             "email": user.user.email,
-            "username": getattr(user.user, "user_metadata", {}).get("username", "")
+            "username": getattr(user.user, "user_metadata", {}).get("username", ""),
         }
 
         db_user = supabase.table("users").select("*").eq("user_id", user.user.id).single().execute()
@@ -222,7 +231,7 @@ def get_current_user_info(user=Depends(get_current_user)):
         if db_user.data:
             auth_user.update({
                 "api_key": db_user.data.get("api_key"),
-                "deviceId": db_user.data.get("device_id")
+                "deviceId": db_user.data.get("device_id"),
             })
 
         return auth_user
@@ -232,6 +241,7 @@ def get_current_user_info(user=Depends(get_current_user)):
 
 @app.get("/user/credits")
 def get_user_credits(user=Depends(get_current_user)):
+    """Return the user’s credit balance."""
     try:
         user_record = supabase.table("users").select("credits").eq("user_id", user.user.id).single().execute()
         if not user_record.data:
