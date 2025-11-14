@@ -17,7 +17,7 @@ RESET_REDIRECT_URL = "https://r-techon.vercel.app/resetpass/setnew"
 #  API Endpoints
 # ========================
 
-@forget_router.post("/forgot-password")
+@forget_router.post("/forgot-password", include_in_schema=False)
 async def forgot_password(email: EmailStr = Form(...)):
     """
     Send Supabase's built-in password reset email
@@ -54,7 +54,7 @@ async def forgot_password(email: EmailStr = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@forget_router.post("/reset-password")
+@forget_router.post("/reset-password", include_in_schema=False)
 async def reset_password(access_token: str = Form(...), new_password: str = Form(...)):
     """
     Complete the password reset using Supabase access token.

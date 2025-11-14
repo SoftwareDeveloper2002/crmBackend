@@ -18,7 +18,7 @@ payment_router = APIRouter(prefix="/api/checkout", tags=["Checkout"])
 # =======================
 #   Checkout Endpoint
 # =======================
-@payment_router.post("/checkout")
+@payment_router.post("/checkout", include_in_schema=False   )
 async def checkout(
     background_tasks: BackgroundTasks,
     plan: str = Form(...),
@@ -86,7 +86,7 @@ async def checkout(
 # =======================
 #   ✅ Get Current User's Payments
 # =======================
-@payment_router.get("/my-payments")
+@payment_router.get("/my-payments", include_in_schema=False)
 async def get_user_payments(user=Depends(get_current_user)):
     """
     Returns all transactions for the currently logged-in user.
@@ -110,7 +110,7 @@ async def get_user_payments(user=Depends(get_current_user)):
 # =======================
 #   Optional: Verify Payment (Admin)
 # =======================
-@payment_router.post("/verify")
+@payment_router.post("/verify", include_in_schema=False)
 async def verify_payment(invoice_id: str = Form(...), status: str = Form(...)):
     """
     Admin endpoint to verify or reject payment.

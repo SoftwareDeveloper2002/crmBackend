@@ -14,7 +14,7 @@ import secrets
 from sms import sms_router
 from payment import payment_router
 from forget import forget_router
-
+from adm_login import admin_router
 # Import shared Supabase + Auth helpers
 from core import supabase, get_current_user
 
@@ -51,6 +51,7 @@ app.add_middleware(
 app.include_router(sms_router)
 app.include_router(payment_router)
 app.include_router(forget_router)
+app.include_router(admin_router)
 
 # =======================
 #   Email Helper
@@ -69,40 +70,6 @@ def render_template(template_name: str, context: dict) -> str:
         html = html.replace(f"{{{{{key}}}}}", str(value))
 
     return html
-
-
-def send_invoice_email(invoice: dict, recipient: str, template_name: str, user_id: str):
-    """Send invoice email via SendGrid, including user payment methods."""
-    try:
-        pm_response = supabase.table("payment_methods").select("*").eq("user_id", user_id).execute()
-        payments = pm_response.data or []
-
-        payments_html = "".join(
-            f"<p>{pm['payment_type']}: {pm['account_name']} - {pm['account_number']}</p>"
-            for pm in payments
-        )
-
-        html_content = render_template(template_name, {
-            "invoice_id": invoice['invoice_id'],
-            "amount": f"{invoice['amount']:,}",
-            "status": invoice['status'].capitalize(),
-            "due_date": invoice.get('due_date', 'N/A'),
-            "payment_methods": payments_html,
-        })
-
-        message = Mail(
-            from_email="admin@iskolardev.online",
-            to_emails=recipient,
-            subject=f"Invoice #{invoice['invoice_id']}",
-            html_content=html_content,
-        )
-
-        sg = SendGridAPIClient(SEND_GRID_API)
-        response = sg.send(message)
-        print(f"✅ [SendGrid] Email sent to {recipient} - Status: {response.status_code}")
-
-    except Exception as e:
-        print(f"❌ [Error] Failed to send invoice email to {recipient}: {e}")
 
 
 # =======================
@@ -181,7 +148,7 @@ async def register(user: RegisterModel):
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 
-@app.post("/login")
+@app.post("/login", include_in_schema=False)
 async def login(user: LoginModel):
     """Authenticate a user and return Supabase session."""
     try:
@@ -216,7 +183,7 @@ async def login(user: LoginModel):
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 
-@app.get("/user/me")
+@app.get("/user/me", include_in_schema=False)
 def get_current_user_info(user=Depends(get_current_user)):
     """Retrieve the current authenticated user info."""
     try:
@@ -239,7 +206,7 @@ def get_current_user_info(user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/user/credits")
+@app.get("/user/credits", include_in_schema=False)
 def get_user_credits(user=Depends(get_current_user)):
     """Return the user’s credit balance."""
     try:
