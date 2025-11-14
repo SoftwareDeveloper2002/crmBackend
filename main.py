@@ -31,6 +31,7 @@ SEND_GRID_API = "SG.7TdSg0zFTWqab_lTMuGa6g.2SLBIvRAEkSlB0IfKoVXAhiSarPeZpltwzcKs
 # =======================
 #   FastAPI App Setup
 # =======================
+app = FastAPI(title="R-Techon SMS", version="1.3.0")
 app = FastAPI(
     title="R-Techon SMS",
     version="1.3.0",
@@ -40,16 +41,24 @@ R-Techon SMS API
 This API allows you to:
 
 - Send SMS via `/api/sms/send`
-- Manage users and credits
-- Admin login and token verification
-- Queue messages to Firebase and Supabase
 
-**Usage Example:**
+---
 
-```bash
-curl -X POST "https://yourdomain.com/api/sms/send" \
--H "Content-Type: application/json" \
--d '{"api_key":"your_api_key","number":"+1234567890","message":"Hello World"}'
+### Endpoints
+
+**1. Send SMS**
+
+`POST http://3.27.40.236/api/sms/send`
+
+Request body (JSON):
+
+```json
+{
+  "api_key": "your_api_key",
+  "number": "09123123456",
+  "message": "Hello World Ngani!"
+}
+""")
 
 origins = [
     "https://r-techon.vercel.app",
