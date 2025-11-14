@@ -31,7 +31,7 @@ SEND_GRID_API = "SG.7TdSg0zFTWqab_lTMuGa6g.2SLBIvRAEkSlB0IfKoVXAhiSarPeZpltwzcKs
 # =======================
 #   FastAPI App Setup
 # =======================
-app = FastAPI(title="R-Techon CRM API", version="1.3.0")
+app = FastAPI(title="R-Techon SMS", version="1.3.0")
 
 origins = [
     "https://r-techon.vercel.app",
