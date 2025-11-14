@@ -5,3 +5,5 @@ supabase
 python-dotenv
 sendgrid
 firebase-admin
+python-jose
+passlib[bcrypt]
