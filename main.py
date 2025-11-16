@@ -147,7 +147,7 @@ async def register(user: RegisterModel):
         if not res.user:
             return JSONResponse(status_code=400, content={"success": False, "message": "Registration failed"})
 
-        api_key = secrets.token_hex(16)
+        api_key = f"roda_{secrets.token_hex(16)}"
         device_id = str(uuid.uuid4())
 
         supabase.table("users").insert({
