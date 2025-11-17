@@ -156,7 +156,7 @@ async def register(user: RegisterModel):
             "username": user.username,
             "api_key": api_key,
             "device_id": device_id,
-            "credits": 0,
+            "credits": 500,
             "role": "freelancer",
             "created_at": datetime.utcnow().isoformat(),
         }).execute()
