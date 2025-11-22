@@ -9,7 +9,10 @@ import smtplib
 import os
 import uuid
 import secrets
-
+import firebase_admin
+from collections import Counter, defaultdict
+from datetime import datetime
+from firebase_admin import credentials, db
 # Import routers
 from sms import sms_router
 from payment import payment_router
@@ -59,6 +62,14 @@ Request body (JSON):
   "message": "Hello World Ngani!"
 }
 """)
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate("serviceAccount.json")
+    firebase_admin.initialize_app(cred, {
+        "databaseURL": "https://rtechon-c3fa0-default-rtdb.asia-southeast1.firebasedatabase.app"
+    })
+
+rtdb = db
 
 origins = [
     "https://r-techon.vercel.app",
@@ -123,7 +134,83 @@ def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
+@app.get("/analytics", include_in_schema=False)
+async def get_user_analytics(user=Depends(get_current_user)):
+    try:
+        user_id = user.user.id
 
+        ref = db.reference(f"/queue/{user_id}")
+        data = ref.get() or {}
+
+        messages = list(data.values())
+
+        if not messages:
+            return {
+                "success": True,
+                "analytics": {
+                    "total_messages": 0,
+                    "sent": 0,
+                    "queued": 0,
+                    "failed": 0,
+                    "percentages": {},
+                    "per_number": {},
+                    "most_sent_number": None,
+                    "per_day": {},
+                    "overtime_graph": {}
+                }
+            }
+
+        total = len(messages)
+        sent = sum(1 for m in messages if m.get("status", "").lower() == "sent")
+        queued = sum(1 for m in messages if m.get("status", "").lower() == "queued")
+        failed = sum(1 for m in messages if m.get("status", "").lower() in ["failed", "error"])
+        percentages = {
+            "sent_percentage": round((sent / total) * 100, 2),
+            "queued_percentage": round((queued / total) * 100, 2),
+            "failed_percentage": round((failed / total) * 100, 2),
+            "success_rate": round((sent / total) * 100, 2)
+        }
+        per_number = Counter(m.get("number") for m in messages)
+        most_sent_number = per_number.most_common(1)[0] if per_number else None
+        per_day = Counter(
+            datetime.fromtimestamp(m.get("timestamp") / 1000).strftime("%Y-%m-%d")
+            for m in messages
+        )
+        overtime = defaultdict(lambda: {"sent": 0, "failed": 0, "queued": 0})
+
+        for m in messages:
+            day = datetime.fromtimestamp(m.get("timestamp") / 1000).strftime("%Y-%m-%d")
+            status = m.get("status", "").lower()
+
+            if status == "sent":
+                overtime[day]["sent"] += 1
+            elif status == "queued":
+                overtime[day]["queued"] += 1
+            elif status in ["failed", "error"]:
+                overtime[day]["failed"] += 1
+        overtime_sorted = dict(sorted(overtime.items(), key=lambda x: x[0]))
+
+        return {
+            "success": True,
+            "analytics": {
+                "total_messages": total,
+                "sent": sent,
+                "queued": queued,
+                "failed": failed,
+                "percentages": percentages,
+                "per_number": dict(per_number),
+                "most_sent_number": {
+                    "number": most_sent_number[0],
+                    "count": most_sent_number[1]
+                } if most_sent_number else None,
+                "per_day": dict(per_day),
+                "overtime_graph": overtime_sorted
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @app.get("/health", include_in_schema=False)
 def health_check():
     """Check API health status."""
