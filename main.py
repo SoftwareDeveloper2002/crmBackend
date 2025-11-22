@@ -121,7 +121,7 @@ class LoginModel(BaseModel):
 @app.get("/", include_in_schema=False)
 def root():
     """Root endpoint."""
-    return {"I stopped explaining when no one cared to understand.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
+    return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
 
 @app.get("/health", include_in_schema=False)
