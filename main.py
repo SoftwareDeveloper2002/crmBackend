@@ -117,10 +117,17 @@ class LoginModel(BaseModel):
 # =======================
 #   Utility Endpoints
 # =======================
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Root endpoint."""
+    return {"everything i have": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
+
+
 @app.get("/health", include_in_schema=False)
 def health_check():
     """Check API health status."""
-    return {"status": "ok", "message": "R-Techon CRM API is running"}
+    return {"status": "ok", "message": "R-Techon API is running. aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
 
 @app.get("/test-smtp", include_in_schema=False)
@@ -157,7 +164,7 @@ async def register(user: RegisterModel):
             "api_key": api_key,
             "device_id": device_id,
             "credits": 500,
-            "role": "freelancer",
+            "role": "users",
             "created_at": datetime.utcnow().isoformat(),
         }).execute()
 
