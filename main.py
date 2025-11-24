@@ -269,7 +269,7 @@ async def register(user: RegisterModel):
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 
-@app.post("/login", include_in_schema=False)
+@app.post("/api/login", include_in_schema=False)
 async def login(user: LoginModel):
     """Authenticate a user and return Supabase session."""
     try:
