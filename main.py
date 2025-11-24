@@ -232,7 +232,7 @@ def test_smtp():
 # =======================
 #   Auth Endpoints
 # =======================
-@app.post("/register", include_in_schema=False)
+@app.post("/api/register", include_in_schema=False)
 async def register(user: RegisterModel):
     """Register a new user in Supabase Auth and local users table."""
     try:
