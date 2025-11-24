@@ -361,13 +361,39 @@ def get_current_user_info(user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/user/credits", include_in_schema=False)
-def get_user_credits(user=Depends(get_current_user)):
-    """Return the user’s credit balance."""
+@app.get("/user/credits")
+def get_user_credits(
+    api_key: str | None = None,
+    user=Depends(get_current_user)
+):
     try:
-        user_record = supabase.table("users").select("credits").eq("user_id", user.user.id).single().execute()
-        if not user_record.data:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"credits": user_record.data.get("credits", 0)}
+        # If user authenticated normally (JWT)
+        if hasattr(user, "user"):
+            user_id = user.user.id
+            data = (
+                supabase.table("users")
+                .select("credits")
+                .eq("user_id", user_id)
+                .single()
+                .execute()
+            )
+            return {"credits": data.data["credits"]}
+
+        # If API key was provided
+        if api_key:
+            data = (
+                supabase.table("users")
+                .select("credits")
+                .eq("api_key", api_key)
+                .single()
+                .execute()
+            )
+            if not data.data:
+                raise HTTPException(status_code=404, detail="Invalid API key")
+
+            return {"credits": data.data["credits"]}
+
+        raise HTTPException(status_code=400, detail="Missing authentication")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
