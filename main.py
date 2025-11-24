@@ -234,40 +234,74 @@ def test_smtp():
 # =======================
 @app.post("/register", include_in_schema=False)
 async def register(user: RegisterModel):
-    """Register a new user in Supabase Auth and local users table."""
+
     try:
-        res = supabase.auth.sign_up({"email": user.email, "password": user.password})
-
-        if not res.user:
-            return JSONResponse(status_code=400, content={"success": False, "message": "Registration failed"})
-
-        api_key = f"roda_{secrets.token_hex(16)}"
-        device_id = str(uuid.uuid4())
-
-        supabase.table("users").insert({
-            "user_id": res.user.id,
+        auth_res = supabase.auth.sign_up({
             "email": user.email,
-            "username": user.username,
-            "api_key": api_key,
-            "device_id": device_id,
-            "credits": 500,
-            "role": "users",
-            "created_at": datetime.utcnow().isoformat(),
-        }).execute()
+            "password": user.password,
+            "options": {
+                "data": {"username": user.username}
+            }
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Auth error: {str(e)}"}
+        )
 
+    user_id = getattr(auth_res.user, "id", None)
+
+    if user_id is None:
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
-                "message": "User registered successfully",
-                "user_id": res.user.id,
+                "message": "Please check your email to confirm your account.",
+                "pending": True
+            }
+        )
+
+    api_key = f"roda_{secrets.token_hex(16)}"
+    device_id = str(uuid.uuid4())
+
+    try:
+        insert_res = (
+            supabase.table("users")
+            .insert({
+                "user_id": user_id,
+                "email": user.email,
+                "username": user.username,
                 "api_key": api_key,
                 "device_id": device_id,
-            },
+                "credits": 500,
+                "role": "users",
+                "created_at": datetime.utcnow().isoformat(),
+            })
+            .execute()
         )
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
+        if insert_res.error:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": f"Insert failed: {insert_res.error}"}
+            )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"DB error: {str(e)}"}
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "message": "User registered successfully",
+            "user_id": user_id,
+            "api_key": api_key,
+            "device_id": device_id,
+        }
+    )
 
 @app.post("/login", include_in_schema=False)
 async def login(user: LoginModel):
