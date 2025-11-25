@@ -7,6 +7,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import smtplib
 import os
+from types import SimpleNamespace
 import uuid
 import secrets
 import firebase_admin
@@ -305,7 +306,6 @@ async def register(user: RegisterModel):
 
 @app.post("/login", include_in_schema=False)
 async def login(user: LoginModel):
-    """Authenticate a user and return Supabase session."""
     try:
         res = supabase.auth.sign_in_with_password({
             "email": user.email,
@@ -322,16 +322,15 @@ async def login(user: LoginModel):
         user_id = res.user.id
 
         # Try to fetch user profile safely
-        user_data = (
+        user_data_res = (
             supabase.table("users")
             .select("user_id, email, username, api_key, device_id, role, credits, created_at")
             .eq("user_id", user_id)
-            .maybe_single()
             .execute()
         )
 
-        # If missing → auto-create user row (self-heal)
-        if not user_data.data:
+        if not user_data_res.data:
+            # Auto-create user row
             new_row = {
                 "user_id": user_id,
                 "email": user.email,
@@ -342,9 +341,11 @@ async def login(user: LoginModel):
                 "role": "users",
                 "created_at": datetime.utcnow().isoformat(),
             }
-
             supabase.table("users").insert(new_row).execute()
-            user_data = {"data": new_row}
+            # Wrap in a simple object to mimic .data
+            user_data = SimpleNamespace(data=new_row)
+        else:
+            user_data = SimpleNamespace(data=user_data_res.data[0])
 
         return JSONResponse(
             status_code=200,
@@ -363,7 +364,7 @@ async def login(user: LoginModel):
             status_code=500,
             content={"success": False, "message": str(e)}
         )
-
+    
 @app.get("/user/me", include_in_schema=False)
 def get_current_user_info(user=Depends(get_current_user)):
     """Retrieve the current authenticated user info."""
