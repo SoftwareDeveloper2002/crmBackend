@@ -20,7 +20,7 @@ from forget import forget_router
 from adm_login import admin_router
 # Import shared Supabase + Auth helpers
 from core import supabase, get_current_user
-
+from typing import Optional
 # =======================
 #   Email Config
 # =======================
@@ -389,7 +389,7 @@ def get_current_user_info(user=Depends(get_current_user)):
 
 @app.get("/user/credits")
 def get_user_credits(
-    api_key: str | None = None,
+    api_key: Optional[str] = None,
     user=Depends(get_current_user)
 ):
     try:
