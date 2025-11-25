@@ -307,36 +307,62 @@ async def register(user: RegisterModel):
 async def login(user: LoginModel):
     """Authenticate a user and return Supabase session."""
     try:
-        res = supabase.auth.sign_in_with_password({"email": user.email, "password": user.password})
+        res = supabase.auth.sign_in_with_password({
+            "email": user.email,
+            "password": user.password
+        })
 
         if not res.session:
-            return JSONResponse(status_code=401, content={"success": False, "message": "Invalid credentials"})
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Invalid credentials"}
+            )
 
         token = res.session.access_token
         user_id = res.user.id
 
+        # Try to fetch user profile safely
         user_data = (
             supabase.table("users")
             .select("user_id, email, username, api_key, device_id, role, credits, created_at")
             .eq("user_id", user_id)
-            .single()
+            .maybe_single()
             .execute()
         )
 
+        # If missing → auto-create user row (self-heal)
         if not user_data.data:
-            return JSONResponse(status_code=404, content={"success": False, "message": "User profile not found"})
+            new_row = {
+                "user_id": user_id,
+                "email": user.email,
+                "username": res.user.user_metadata.get("username", ""),
+                "api_key": f"roda_{secrets.token_hex(16)}",
+                "device_id": str(uuid.uuid4()),
+                "credits": 500,
+                "role": "users",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+            supabase.table("users").insert(new_row).execute()
+            user_data = {"data": new_row}
 
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "message": "Login successful",
-                "session": {"access_token": token, "user": user_data.data},
+                "session": {
+                    "access_token": token,
+                    "user": user_data.data,
+                },
             },
         )
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": str(e)}
+        )
 
 @app.get("/user/me", include_in_schema=False)
 def get_current_user_info(user=Depends(get_current_user)):
