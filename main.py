@@ -236,7 +236,6 @@ def test_smtp():
 @app.post("/register", include_in_schema=False)
 async def register(user: RegisterModel):
     try:
-        # Sign up user with Supabase Auth
         auth_res = supabase.auth.sign_up({
             "email": user.email,
             "password": user.password,
@@ -250,7 +249,6 @@ async def register(user: RegisterModel):
 
     user_id = getattr(auth_res.user, "id", None)
 
-    # If email confirmation is required, user_id may be None
     if user_id is None:
         return JSONResponse(
             status_code=200,
@@ -276,7 +274,6 @@ async def register(user: RegisterModel):
             "created_at": datetime.utcnow().isoformat(),
         }).execute()
 
-        # ✅ Correct check: use data only
         if not insert_res.data:
             return JSONResponse(
                 status_code=500,
