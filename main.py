@@ -276,11 +276,11 @@ async def register(user: RegisterModel):
             "created_at": datetime.utcnow().isoformat(),
         }).execute()
 
-        # Safe check for insertion errors
-        if insert_res.get("error"):
+        # ✅ Correct error check
+        if insert_res.status_code >= 400 or not insert_res.data:
             return JSONResponse(
                 status_code=500,
-                content={"success": False, "message": f"Insert failed: {insert_res['error']}"}
+                content={"success": False, "message": f"Insert failed: {insert_res.status_code}"}
             )
 
     except Exception as e:
