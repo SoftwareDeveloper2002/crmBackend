@@ -391,11 +391,12 @@ def get_current_user_info(user=Depends(get_current_user)):
 @app.get("/user/credits")
 def get_user_credits(
     api_key: Optional[str] = None,
-    user=Depends(get_current_user)
+    authorization: Optional[str] = Header(None)
 ):
     try:
-        # If user authenticated normally (JWT)
-        if hasattr(user, "user"):
+        # CASE 1 — JWT Provided
+        if authorization:
+            user = get_current_user(authorization)
             user_id = user.user.id
             data = (
                 supabase.table("users")
@@ -406,7 +407,7 @@ def get_user_credits(
             )
             return {"credits": data.data["credits"]}
 
-        # If API key was provided
+        # CASE 2 — API Key Provided
         if api_key:
             data = (
                 supabase.table("users")
