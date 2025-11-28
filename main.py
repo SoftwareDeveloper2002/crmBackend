@@ -390,7 +390,6 @@ def get_user_credits(
     authorization: Optional[str] = Header(None)
 ):
     try:
-        # CASE 1 — JWT Provided
         if authorization:
             user = get_current_user(authorization)
             user_id = user.user.id
@@ -403,12 +402,14 @@ def get_user_credits(
                 .execute()
             )
 
-            if result.error_message:
+            if getattr(result, "error_message", None):
                 raise HTTPException(status_code=404, detail=result.error_message)
 
-            return {"credits": result.data["credits"]}
+            if not result.data:
+                raise HTTPException(status_code=404, detail="User not found")
 
-        # CASE 2 — API Key Provided
+            return {"credits": result.data.get("credits", 0)}
+
         if api_key:
             result = (
                 supabase.table("users")
@@ -418,10 +419,10 @@ def get_user_credits(
                 .execute()
             )
 
-            if result.error_message:
+            if getattr(result, "error_message", None) or not result.data:
                 raise HTTPException(status_code=404, detail="Invalid API key")
 
-            return {"credits": result.data["credits"]}
+            return {"credits": result.data.get("credits", 0)}
 
         raise HTTPException(status_code=400, detail="Missing authentication")
 
