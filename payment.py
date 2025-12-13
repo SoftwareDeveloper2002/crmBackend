@@ -6,7 +6,7 @@ import shutil, os, uuid
 from typing import Optional
 
 # Import helpers from your main app
-from core import supabase, get_current_user, send_invoice_email
+from core import supabase, get_current_user
 
 
 # =======================
@@ -61,7 +61,6 @@ async def checkout(
 
         # Send invoice email
         background_tasks.add_task(
-            send_invoice_email,
             invoice=transaction,
             recipient=user.user.email,
             template_name="invoice_template.html",

@@ -3,8 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 import smtplib
 import os
 from types import SimpleNamespace
@@ -28,17 +26,14 @@ from typing import Optional
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USER = "robbyroda09@gmail.com"
-SMTP_PASS = "srsk ests yvzu kklg"  # Use Gmail App Password
-TEMPLATE_DIR = "templates"
-SEND_GRID_API = "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"
+SMTP_PASS = "srsk ests yvzu kklg"
 
 # =======================
 #   FastAPI App Setup
 # =======================
-app = FastAPI(title="R-Techon SMS", version="1.3.0")
 app = FastAPI(
     title="R-Techon SMS",
-    version="1.3.0",
+    version="1.0.1",
     description="""
 R-Techon SMS API
 
@@ -134,6 +129,16 @@ class LoginModel(BaseModel):
 def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
+    
+@app.get("/logistics/status")
+def get_logistics_status():
+    return {
+        "shipment_id": "LOG-12345",
+        "status": "in progress",
+        "current_location": "Distribution Center A",
+        "destination": "Warehouse B",
+        "estimated_delivery": "2025-12-15"
+    }
 
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
@@ -235,6 +240,14 @@ def test_smtp():
 # =======================
 @app.post("/register", include_in_schema=False)
 async def register(user: RegisterModel):
+    # 1️⃣ Validate password confirmation
+    if user.password != user.confirm_password:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Passwords do not match."}
+        )
+
+    # 2️⃣ Attempt to sign up with Supabase Auth
     try:
         auth_res = supabase.auth.sign_up({
             "email": user.email,
@@ -242,14 +255,22 @@ async def register(user: RegisterModel):
             "options": {"data": {"username": user.username}}
         })
     except Exception as e:
+        # Handle rate-limiting explicitly
+        if "429" in str(e) or "Too Many Requests" in str(e):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "success": False,
+                    "message": "Too many requests. Please wait a minute before trying again."
+                }
+            )
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": f"Auth error: {str(e)}"}
         )
 
-    user_id = getattr(auth_res.user, "id", None)
-
-    if user_id is None:
+    # 3️⃣ If user requires email confirmation, return pending message
+    if getattr(auth_res.user, "confirmation_sent_at", None) is not None:
         return JSONResponse(
             status_code=200,
             content={
@@ -259,9 +280,12 @@ async def register(user: RegisterModel):
             }
         )
 
+    # 4️⃣ Generate API key and device ID
+    user_id = auth_res.user.id
     api_key = f"roda_{secrets.token_hex(16)}"
     device_id = str(uuid.uuid4())
 
+    # 5️⃣ Insert user record into Supabase table
     try:
         insert_res = supabase.table("users").insert({
             "user_id": user_id,
@@ -277,20 +301,20 @@ async def register(user: RegisterModel):
         if not insert_res.data:
             return JSONResponse(
                 status_code=500,
-                content={"success": False, "message": "Insert failed: no data returned"}
+                content={"success": False, "message": "User registration failed: no data returned."}
             )
-
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"success": False, "message": f"DB error: {str(e)}"}
+            content={"success": False, "message": f"Database error: {str(e)}"}
         )
 
+    # 6️⃣ Return success response
     return JSONResponse(
-        status_code=200,
+        status_code=201,
         content={
             "success": True,
-            "message": "User registered successfully",
+            "message": "User registered successfully. Please check your email to confirm your account.",
             "user_id": user_id,
             "api_key": api_key,
             "device_id": device_id,
