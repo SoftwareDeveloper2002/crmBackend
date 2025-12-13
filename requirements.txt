@@ -6,4 +6,5 @@ python-dotenv
 sendgrid
 firebase-admin
 python-jose
+python-multipart
 passlib[bcrypt]
