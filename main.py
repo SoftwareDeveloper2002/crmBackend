@@ -129,17 +129,18 @@ class LoginModel(BaseModel):
 def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
-    
-@app.get("/logistics/status")
-def get_logistics_status():
+
+class LogisticsStatusRequest(BaseModel):
+    shipment_id: str
+
+@app.post("/logistics/status")
+async def get_logistics_status(data: LogisticsStatusRequest):
     return {
-        "shipment_id": "LOG-12345",
+        "shipment_id": data.shipment_id,
         "status": "in progress",
         "current_location": "Distribution Center A",
-        "destination": "Warehouse B",
         "estimated_delivery": "2025-12-15"
     }
-
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
     try:
