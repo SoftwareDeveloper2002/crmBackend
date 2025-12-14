@@ -136,11 +136,12 @@ class LogisticsStatusRequest(BaseModel):
 @app.post("/logistics/status")
 async def get_logistics_status(data: LogisticsStatusRequest):
     return {
-        "shipment_id": data.shipment_id,
+        "shipment_id": 123,
         "status": "in progress",
         "current_location": "Distribution Center A",
         "estimated_delivery": "2025-12-15"
     }
+
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
     try:
