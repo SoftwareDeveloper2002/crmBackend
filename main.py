@@ -133,15 +133,32 @@ def root():
 class LogisticsStatusRequest(BaseModel):
     shipment_id: str
 
-@app.post("/logistics/status")
-async def get_logistics_status(data: LogisticsStatusRequest):
-    return {
-        "shipment_id": 999,
+# Hardcoded static shipment data
+shipments = {
+    "999": {
         "status": "in progress",
         "current_location": "Distribution Center A",
         "estimated_delivery": "2025-12-15"
+    },
+    "1000": {
+        "status": "delivered",
+        "current_location": "Customer Address",
+        "estimated_delivery": "2025-12-10"
+    },
+    "1001": {
+        "status": "out for delivery",
+        "current_location": "Local Delivery Hub",
+        "estimated_delivery": "2025-12-14"
     }
+}
 
+@app.post("/logistics/status")
+async def get_logistics_status(data: LogisticsStatusRequest):
+    shipment = shipments.get(data.shipment_id)
+    if shipment:
+        return {"shipment_id": data.shipment_id, **shipment}
+    else:
+        return {"error": "Shipment not found"}
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
     try:
