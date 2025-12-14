@@ -136,7 +136,7 @@ class LogisticsStatusRequest(BaseModel):
 @app.post("/logistics/status")
 async def get_logistics_status(data: LogisticsStatusRequest):
     return {
-        "shipment_id": 123,
+        "shipment_id": 999,
         "status": "in progress",
         "current_location": "Distribution Center A",
         "estimated_delivery": "2025-12-15"
