@@ -130,9 +130,6 @@ def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
-class LogisticsStatusRequest(BaseModel):
-    shipment_id: str
-
 shipments = {
     "999": {
         "status": "in progress",
@@ -153,14 +150,16 @@ shipments = {
         "estimated_delivery": "2025-12-14"
     }
 }
-
 @app.get("/logistics/status")
-async def get_logistics_status(data: LogisticsStatusRequest):
-    shipment = shipments.get(data.shipment_id)
-    if shipment:
-        return {"shipment_id": data.shipment_id, **shipment}
-    else:
+async def get_logistics_status(shipment_id: str | None = None):
+    if shipment_id:
+        shipment = shipments.get(shipment_id)
+        if shipment:
+            return {"shipment_id": shipment_id, **shipment}
         return {"error": "Shipment not found"}
+
+    # return all shipments
+    return shipments
 
 
 @app.get("/analytics", include_in_schema=False)
