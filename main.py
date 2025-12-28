@@ -131,38 +131,6 @@ def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
-shipments = {
-    "999": {
-        "status": "in progress",
-        "email": "robbyroda.00@gmail.com",
-        "current_location": "Distribution Center A",
-        "estimated_delivery": "2025-12-15"
-    },
-    "1000": {
-        "status": "delivered",
-        "email": "robbyroda.00@gmail.com",
-        "current_location": "Customer Address",
-        "estimated_delivery": "2025-12-10"
-    },
-    "1001": {
-        "status": "out for delivery",
-        "email": "robbyroda.00@gmail.com",
-        "current_location": "Local Delivery Hub",
-        "estimated_delivery": "2025-12-14"
-    }
-}
-@app.get("/logistics/status")
-async def get_logistics_status(shipment_id: str | None = None):
-    if shipment_id:
-        shipment = shipments.get(shipment_id)
-        if shipment:
-            return {"shipment_id": shipment_id, **shipment}
-        return {"error": "Shipment not found"}
-
-    # return all shipments
-    return shipments
-
-
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
     try:
