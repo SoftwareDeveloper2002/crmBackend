@@ -134,7 +134,7 @@ def root():
 @app.get("/analytics", include_in_schema=False)
 async def get_user_analytics(user=Depends(get_current_user)):
     try:
-        user_id = user.user.id
+        user_id = user.get("id")
 
         ref = db.reference(f"/queue/{user_id}")
         data = ref.get() or {}
