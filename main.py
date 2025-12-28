@@ -18,7 +18,8 @@ from payment import payment_router
 from forget import forget_router
 from adm_login import admin_router
 # Import shared Supabase + Auth helpers
-from core import supabase, get_current_user
+import supabase
+from core import get_current_user
 from typing import Optional
 # =======================
 #   Email Config
