@@ -18,12 +18,15 @@ from payment import payment_router
 from forget import forget_router
 from adm_login import admin_router
 # Import shared Supabase + Auth helpers
-import supabase
-from core import get_current_user
+from core import get_current_user, get_supabase_client
 from typing import Optional
+
+supabase = get_supabase_client(service_role=True)
+
+
 # =======================
 #   Email Config
-# =======================
+# ================ =======
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USER = "robbyroda09@gmail.com"
@@ -131,32 +134,22 @@ def root():
     """Root endpoint."""
     return {"I’m still here, but not really.": "aHR0cDovL2NvZGVybGlzdC5mcmVlLm5mL3NvcnJ5LnR4dA=="}
 
-@app.get("/analytics", include_in_schema=False)
+@app.get("/analytics")
 async def get_user_analytics(user=Depends(get_current_user)):
+    """
+    Fetch analytics for the authenticated user.
+    Gracefully returns 401 if JWT is invalid.
+    """
     try:
-        user_id = user.get("id")
-
+        user_id = user.user.id
         ref = db.reference(f"/queue/{user_id}")
         data = ref.get() or {}
-
         messages = list(data.values())
 
         if not messages:
-            return {
-                "success": True,
-                "analytics": {
-                    "total_messages": 0,
-                    "sent": 0,
-                    "queued": 0,
-                    "failed": 0,
-                    "percentages": {},
-                    "per_number": {},
-                    "most_sent_number": None,
-                    "per_day": {},
-                    "overtime_graph": {}
-                }
-            }
+            return {"success": True, "analytics": {}}
 
+        # Count messages
         total = len(messages)
         sent = sum(1 for m in messages if m.get("status", "").lower() == "sent")
         queued = sum(1 for m in messages if m.get("status", "").lower() == "queued")
@@ -164,28 +157,30 @@ async def get_user_analytics(user=Depends(get_current_user)):
         percentages = {
             "sent_percentage": round((sent / total) * 100, 2),
             "queued_percentage": round((queued / total) * 100, 2),
-            "failed_percentage": round((failed / total) * 100, 2),
-            "success_rate": round((sent / total) * 100, 2)
+            "failed_percentage": round((failed / total) * 100, 2)
         }
-        per_number = Counter(m.get("number") for m in messages)
-        most_sent_number = per_number.most_common(1)[0] if per_number else None
+
+        # Messages per number and per day
+        per_number = Counter(m.get("number") for m in messages if m.get("number"))
         per_day = Counter(
-            datetime.fromtimestamp(m.get("timestamp") / 1000).strftime("%Y-%m-%d")
+            datetime.fromtimestamp(m.get("timestamp", 0) / 1000).strftime("%Y-%m-%d") 
             for m in messages
         )
+
+        # Overtime graph
         overtime = defaultdict(lambda: {"sent": 0, "failed": 0, "queued": 0})
-
         for m in messages:
-            day = datetime.fromtimestamp(m.get("timestamp") / 1000).strftime("%Y-%m-%d")
+            ts = m.get("timestamp")
+            if not ts:
+                continue
+            day = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
             status = m.get("status", "").lower()
-
             if status == "sent":
                 overtime[day]["sent"] += 1
             elif status == "queued":
                 overtime[day]["queued"] += 1
             elif status in ["failed", "error"]:
                 overtime[day]["failed"] += 1
-        overtime_sorted = dict(sorted(overtime.items(), key=lambda x: x[0]))
 
         return {
             "success": True,
@@ -196,17 +191,22 @@ async def get_user_analytics(user=Depends(get_current_user)):
                 "failed": failed,
                 "percentages": percentages,
                 "per_number": dict(per_number),
-                "most_sent_number": {
-                    "number": most_sent_number[0],
-                    "count": most_sent_number[1]
-                } if most_sent_number else None,
                 "per_day": dict(per_day),
-                "overtime_graph": overtime_sorted
+                "overtime_graph": dict(sorted(overtime.items()))
             }
         }
 
+    except HTTPException:
+        raise  # pass through 401/403 as-is
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log exception for debugging
+        print(f"[Analytics Error] {e}")
+        # If JWT is invalid or expired
+        msg = str(e).lower()
+        if "invalid token" in msg or "invalid_grant" in msg or "signature" in msg:
+            raise HTTPException(status_code=401, detail="Invalid or expired access token")
+        # Catch-all for other errors
+        raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/health", include_in_schema=False)
 def health_check():
@@ -397,13 +397,14 @@ def get_current_user_info(user=Depends(get_current_user)):
 
 
 @app.get("/user/credits")
-def get_user_credits(
+async def get_user_credits(
     api_key: Optional[str] = None,
     authorization: Optional[str] = Header(None)
 ):
     try:
+        # Case 1: Authorization header present
         if authorization:
-            user = get_current_user(authorization)
+            user = await get_current_user(authorization)
             user_id = user.user.id
 
             result = (
@@ -422,6 +423,7 @@ def get_user_credits(
 
             return {"credits": result.data.get("credits", 0)}
 
+        # Case 2: API key present
         if api_key:
             result = (
                 supabase.table("users")
@@ -436,6 +438,7 @@ def get_user_credits(
 
             return {"credits": result.data.get("credits", 0)}
 
+        # Missing auth
         raise HTTPException(status_code=400, detail="Missing authentication")
 
     except HTTPException:
