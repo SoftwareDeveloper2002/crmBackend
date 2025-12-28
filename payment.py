@@ -6,7 +6,7 @@ import shutil, os, uuid
 from typing import Optional
 
 # Import helpers from your main app
-from core import supabase, get_current_user
+from core import get_current_user
 
 
 # =======================
