@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Form
 from pydantic import EmailStr
-from core import supabase
 import os
+import supabase
 
 # ========================
 #  Router Setup
