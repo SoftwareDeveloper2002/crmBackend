@@ -1,26 +1,31 @@
 from fastapi import Header, HTTPException
-from supabase import create_client, Client
-import os
-
-SUPABASE_URL = "https://wwpuorqzzvzuslbpukil.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3cHVvcnF6enZ6dXNsYnB1a2lsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODc1Njk0NiwiZXhwIjoyMDc0MzMyOTQ2fQ.64t6V2e7_Wg085lwHFssNkAJrWNHMFLwSJwQkpmtKq4"
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+from fastapi.concurrency import run_in_threadpool
+from supabase import Client
 
 def get_current_user(authorization: str = Header(None)):
-    """
-    Get the currently authenticated user using the Bearer token.
-    Raises 401 if missing, invalid, or expired.
-    """
     if not authorization:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization.replace("Bearer ", "")
 
     try:
-        user_response = supabase.auth.get_user(token)
+        # Run blocking Supabase call in thread pool
+        user_response = run_in_threadpool(
+            lambda: supabase.auth.get_user(token)
+        )
+
+        # run_in_threadpool returns a coroutine → await it
+        if hasattr(user_response, "__await__"):
+            import asyncio
+            user_response = asyncio.get_event_loop().run_until_complete(user_response)
+
         if not user_response or not getattr(user_response, "user", None):
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=401, detail="Invalid token")
+
         return user_response
+
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid or expired token: {str(e)}"
+        )
